@@ -1,0 +1,22 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Train",
+            "type": "python",
+            "request": "launch",
+            "module": "accelerate.commands.launch",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--config_file", "accelerate_config/deepseed.yaml",
+                "--main_process_port", "29511",
+                "train.py",
+                "--use_8bit_adam",
+            ]
+        }
+    ]
+}
