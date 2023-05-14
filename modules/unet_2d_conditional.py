@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from stable_diffusion_pytorch.modules.unet_transformer import SpatialTransformer
+from unet_transformer import SpatialTransformer
 
 class TimestepBlock(nn.Module):
     """

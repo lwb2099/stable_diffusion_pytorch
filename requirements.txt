@@ -1,0 +1,7 @@
+diffusers
+torch
+torchvision
+datasets
+accelerate
+xformers
+bitsandbytes
