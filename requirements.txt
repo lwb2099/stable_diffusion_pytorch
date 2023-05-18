@@ -3,5 +3,6 @@ torch
 torchvision
 datasets
 accelerate
+einops
 xformers
 bitsandbytes

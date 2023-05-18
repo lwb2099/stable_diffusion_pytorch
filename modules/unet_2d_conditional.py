@@ -64,13 +64,16 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
             # pass Conv2d, UpSample, DownSample
             else:
                 x = module(x)
-            print(f"{type(module)}, x: {x.shape}")
         return x
 
 
 class UpSample(nn.Module):
     """
     constructor for UpSample layer
+
+    Architecture:
+        - Interpolate
+        - Conv2d
 
     Args:
         - in_channels (int):   
@@ -119,6 +122,10 @@ class UpSample(nn.Module):
 class DownSample(nn.Module):
     """
     constructor for DownSample layer
+
+    Architecture:
+        - Conv2d
+        - Interpolate
 
     Args:
         - in_channels (int):   
@@ -171,6 +178,12 @@ class DownSample(nn.Module):
 class ResBlock(nn.Module):
     """
         ResBlock used in U-Net
+        
+        Archetecture:: 
+            - in_layers = [`GroupNorm`, `SiLU`, `Conv2d`]
+            - time_emb = [`SiLU`, `Linear`]
+            - out_layers = [`GroupNorm`, `SiLU`, `Dropout`]
+
         Args:
             - in_channels (int):   
                   input num of channels
@@ -257,6 +270,26 @@ class UNetModel(nn.Module):
     at each level there are sevreal(total `num_res_blocks`) 
     `ResBlocks`/`SpatialTransformer`/`AttentionBlock`/`UpSample`/`DownSample` blocks
     
+    Archetecture:
+      - input_blocks: [
+                    TimestepEmbSeq[`Conv2d]`,
+                    (num_levels-1) * (
+                        (num_res_blocks)* (TimestepEmbSeq[`Resblock`, Optioanl[`SpatialTransformer`]]), 
+                        TimestepEmbSeq[`DownSample`]
+                    ),
+                    (num_res_blocks)* (TimestepEmbSeq[`Resblock`, Optioanl[`SpatialTransformer`]])
+            ]
+      - bottleneck: TimestepEmbSeq[`ResBlock`, `SpatialTransformer`, `ResBlock`]
+      
+      - output_blocks: [
+                    (num_levels-1) * (
+                        (num_res_blocks)* (TimestepEmbSeq[`Resblock`, Optioanl[`SpatialTransformer`]]), 
+                        TimestepEmbSeq[`UpSample`]
+                    ),
+                    (num_res_blocks)* (TimestepEmbSeq[`Resblock`, Optioanl[`SpatialTransformer`]])
+               ]
+      - out: [GroupNorm, SiLU, Conv2d]
+
     Args:
         - in_channels (int):   
                 number of channels in the input feature map
@@ -289,6 +322,7 @@ class UNetModel(nn.Module):
                 n_heads: int,
                 attention_resolutions: List[int],
                 channel_mult: List[int],
+                dropout: float=0.,
                 n_layers: int=1,
                 context_dim: int=768,
             ):
@@ -337,29 +371,29 @@ class UNetModel(nn.Module):
         # Number of channels at each level
         channels_list = [channels * m for m in channel_mult]
         #* add levels input blocks(down sample layers)
-        in_channels = self.channels
+        in_ch = self.channels
         #@ note: in labmlai, they use level in attn_resolutions but in origin stable diffusion paper, they use ds = [1,2,4,...],total num levels
         attn_mult = 1
         for level in range(levels):
             for _ in range(num_res_blocks):
                 # Residual block maps from previous number of channels to the number of
                 # channels in the current level
-                out_channels = channels_list[level]
-                layers = [ResBlock(in_channels=in_channels, out_channels=out_channels, time_emb_dim=time_emb_dim)]
-                in_channels = out_channels  # this level's output channels is next level's input channels
+                out_ch = channels_list[level]
+                layers = [ResBlock(in_channels=in_ch, out_channels=out_ch, time_emb_dim=time_emb_dim)]
+                in_ch = out_ch  # this level's output channels is next level's input channels
                 #* add attention layers
                 if attn_mult in attention_resolutions:
-                    d_head = in_channels // n_heads
-                    layers.append(SpatialTransformer(in_channels, n_heads=n_heads, 
+                    d_head = in_ch // n_heads
+                    layers.append(SpatialTransformer(in_ch, n_heads=n_heads, 
                                                      d_head=d_head, n_layers=n_layers, 
                                                      dropout=dropout, context_dim=context_dim))
-            self.input_blocks.append(TimestepEmbedSequential(*layers))
-            self.input_block_channels.append(in_channels)
+                self.input_blocks.append(TimestepEmbedSequential(*layers))
+                self.input_block_channels.append(in_ch)
             #* add DownSample block except last level
             if level != levels-1:
-                self.input_blocks.append(TimestepEmbedSequential(DownSample(in_channels)))
+                self.input_blocks.append(TimestepEmbedSequential(DownSample(in_ch)))
                 # add additional in_channels for downsample
-                self.input_block_channels.append(in_channels)
+                self.input_block_channels.append(in_ch)
                 attn_mult *= 2  # double it for next itr, this won't be multiplied in the last layer
 
             #@ note: openai recalculated d_heads for attention in the bottoleneck, but that seems redundant(so as out_ch=ch and then ch=out_ch)
@@ -368,43 +402,42 @@ class UNetModel(nn.Module):
         # ==============================================================
         #* bottleneck has one resblock, then one attention block/spatial transformer, and then one resblock
         self.middle_block = TimestepEmbedSequential(
-            ResBlock(in_channels=in_channels, out_channels=in_channels, time_emb_dim=time_emb_dim, dropout=dropout),
-            SpatialTransformer(in_channels, n_heads=n_heads, d_head=d_head, n_layers=n_layers, dropout=dropout, context_dim=context_dim),
-            ResBlock(in_channels=in_channels, out_channels=in_channels, time_emb_dim=time_emb_dim, dropout=dropout)
+            ResBlock(in_channels=in_ch, time_emb_dim=time_emb_dim, dropout=dropout),
+            SpatialTransformer(in_ch, n_heads=n_heads, d_head=d_head, n_layers=n_layers, dropout=dropout, context_dim=context_dim),
+            ResBlock(in_channels=in_ch, time_emb_dim=time_emb_dim, dropout=dropout)
         )
         # ==============================================================
         # ======================output blocks===========================
         # ==============================================================
         self.output_blocks = nn.ModuleList([])
-        for level in range(levels-1, -1, -1):
-            #* add upsample block
-            self.output_blocks.append(TimestepEmbedSequential(UpSample(in_channels)))
+        for level in reversed(range(level)):
             #* add resblocks
             for _ in range(num_res_blocks + 1):
                 # Residual block maps from previous number of channels to the number of
                 # channels in the current level
-                out_channels = self.input_block_channels[level]
-                layers = [ResBlock(in_channels=in_channels, out_channels=out_channels, time_emb_dim=time_emb_dim, dropout=dropout)]
-                in_channels = out_channels
+                #* note: here should add input_block_channels.pop() because input blocks are used as skip connection
+                out_ch = channels_list[level]
+                layers = [ResBlock(in_channels=in_ch + self.input_block_channels.pop(), out_channels=out_ch, time_emb_dim=time_emb_dim, dropout=dropout)]
+                in_ch = out_ch
                 #* add attention layers
                 if attn_mult in attention_resolutions:
-                    d_head = in_channels // n_heads
-                    layers.append(SpatialTransformer(in_channels, n_heads=n_heads, 
+                    d_head = in_ch // n_heads
+                    layers.append(SpatialTransformer(in_ch, n_heads=n_heads, 
                                                      d_head=d_head, n_layers=n_layers, 
                                                      dropout=dropout, context_dim=context_dim))
-            self.output_blocks.append(TimestepEmbedSequential(*layers))
+                self.output_blocks.append(TimestepEmbedSequential(*layers))
             # *add UpSample except the last one, note that in reversed order, level==0 is the last
             #@ note: both openai and labmlai use num_res_blocks here and placed it in the inner loop, this can be simply copied from upsample...
             if level != 0:
-                self.output_blocks.append(TimestepEmbedSequential(UpSample(in_channels)))
+                self.output_blocks.append(TimestepEmbedSequential(UpSample(in_ch)))
                 attn_mult //= 2
         # ==============================================================
         # ======================final output============================
         # ==============================================================
         self.out = nn.Sequential(
-            nn.GroupNorm(32, in_channels),
+            nn.GroupNorm(32, in_ch),
             nn.SiLU(),
-            nn.Conv2d(in_channels=channels, out_channels=out_channels, kernel_size=3, padding=1)
+            nn.Conv2d(in_channels=in_ch, out_channels=self.out_channels, kernel_size=3, padding=1)
         )
 
     def time_step_embedding(self, time_steps: torch.Tensor, max_len: int=10000) -> torch.Tensor:
@@ -425,7 +458,7 @@ class UNetModel(nn.Module):
 
     def forward(self, x: torch.Tensor, timesteps: torch.Tensor, context: torch.Tensor=None):
         """
-        forward _summary_
+        forward pass
 
         Args:
             - x (torch.Tensor):   
@@ -456,6 +489,7 @@ class UNetModel(nn.Module):
         x = self.middle_block(x, time_emb, context)
         #* output blocks
         for module in self.output_blocks:
+            # skip connection from input blocks
             x = torch.cat([x,x_input_blocks.pop()], dim=1)
             x = module(x, time_emb,context)
         return self.out(x)
@@ -463,22 +497,32 @@ class UNetModel(nn.Module):
 
 
 if __name__ == "__main__":
-    x = np.random.randn(1, 128, 64, 64)
+    batch = 10
+    image_size = 64
+    in_channels = 3
+    channels = 128
+    out_channels = 3
+    tim_emb_dim = 512
+    seq_len = 77
+    context_dim = 768
+    x = np.random.randn(batch, in_channels, image_size, image_size)
     x = torch.from_numpy(x).float()
+    timestep = torch.ones(size=(batch,))
     # test upsample
-    upsample = UpSample(128, )
-    up = upsample(x)
-    print(up.shape)
-    # test downsample
-    downsample = DownSample(128, )
-    down = downsample(x)
-    print(down.shape)
-    # test resblock
-    resblock = ResBlock(128, 96, 512)
-    res = resblock(x, torch.ones(1, 512))
-    print(res.shape)
+    # upsample = UpSample(in_channels=channels, )
+    # up = upsample(x)
+    # print(up.shape)
+    # # test downsample
+    # downsample = DownSample(in_channels=channels, )
+    # down = downsample(x)
+    # print(down.shape)
+    # # test resblock
+    # resblock = ResBlock(in_channels=channels, out_channels=out_channels, time_emb_dim=tim_emb_dim)
+    # res = resblock(x, time_emb=torch.ones(size=(batch, tim_emb_dim)))
+    # print(res.shape)
     # test U-Net
-    context = torch.ones(1, 77, 768)
-    unet = UNetModel(in_channels=128, out_channels=96, channels=128, num_res_blocks=2, n_heads=4,
-                     attention_resolutions=(1, 2), channel_mult=[1,2,4], dropout=0.1,  n_layers=2, context_dim=768)
-    out = unet(x, torch.ones(10), context)
+    context = torch.ones((batch, seq_len, context_dim))
+    unet = UNetModel(in_channels=in_channels, out_channels=out_channels, channels=channels, num_res_blocks=2, n_heads=4,
+                     attention_resolutions=(1, 2), channel_mult=[1,2], dropout=0.1,  n_layers=2, context_dim=context_dim)
+    out = unet(x, timestep, context)
+    print(out.shape)
