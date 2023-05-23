@@ -6,3 +6,4 @@ accelerate
 einops
 xformers
 bitsandbytes
+transformers

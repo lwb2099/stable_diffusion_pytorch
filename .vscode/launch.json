@@ -23,6 +23,8 @@
                 "--config_file", "accelerate_config/deepseed.yaml",
                 "--main_process_port", "29511",
                 "train.py",
+                "--dataset", "fusing/fill50k",
+                "--output_dir", "ckpt/",
                 "--use_8bit_adam",
             ]
         }
