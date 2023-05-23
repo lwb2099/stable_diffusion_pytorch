@@ -1,23 +1,16 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
 '''
-@File    :   utils.py
-@Time    :   2023/05/15 12:55:11
+@File    :   timestep_embedding.py
+@Time    :   2023/05/22 22:54:29
 @Author  :   Wenbo Li
-@Desc    :   Util class for models
+@Desc    :   Time step embedding implement
 '''
 
 import torch
-import torch.nn as nn
 import math
 
-def zero_module(module):
-    """
-    Zero out the parameters of a module and return it.
-    """
-    for p in module.parameters():
-        p.detach().zero_()
-    return module
+
 
 def sinusoidal_time_step_embedding(time_steps: torch.Tensor, emb_dim: int, max_len: int=10000) -> torch.Tensor:
     """
@@ -46,11 +39,3 @@ def sinusoidal_time_step_embedding(time_steps: torch.Tensor, emb_dim: int, max_l
     args = time_steps[:, None].float() * freq[None]
     # shape=[batch, emb_dim]
     return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
-
-
-
-if __name__ == "__main__":
-    time_steps = torch.arange(0, 10)
-    emb_dim = 32
-    max_len = 100
-    print(sinusoidal_time_step_embedding(time_steps, emb_dim, max_len).shape)

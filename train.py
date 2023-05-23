@@ -15,7 +15,7 @@ from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 import logging
 from diffusers.optimization import get_scheduler
-from utils.load_datasets import get_dataset
+from dataset.prepare_dataset import get_dataloader
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -148,7 +148,7 @@ def parse_args():
     
     return args
 
-class StableDiffusionPipeline():
+class StableDiffusionTrainer():
 
     def __init__(self):
         pass
@@ -250,7 +250,7 @@ class StableDiffusionPipeline():
             transforms.Normalize([0.5], [0.5]),
         ]
     )
-        self.train_dataloader = get_dataset(args.dataset, args.data_dir, self.tokenizer, train_transforms, args.train_batch_size, self.accelerator.num_processes)
+        self.train_dataloader = load_dataset(args.dataset, args.data_dir, self.tokenizer, train_transforms, args.train_batch_size, self.accelerator.num_processes)
         self.lr_scheduler = get_scheduler(
                 args.lr_scheduler,
                 optimizer=self.optimizer,
@@ -344,7 +344,7 @@ class StableDiffusionPipeline():
         noise = torch.randn(latent_vector)
         #* 2. Sample a random timestep for each image
         bsz = latent_vector.shape[0]
-        timesteps = torch.randint(0, self.noise_scheduler.config.noise_timesteps, (bsz,), device=latent_vector.device)
+        timesteps = torch.randint(0,1000, (bsz,), device=latent_vector.device)
         timesteps = timesteps.long()
         #* 3. add noise to latent vector
         x_t = self.noise_scheduler.add_noise(latent_vector, timesteps, noise)
@@ -358,8 +358,9 @@ class StableDiffusionPipeline():
         return F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
 
 
+
 if __name__ == '__main__':
     args = parse_args()
-    stablediffusion = StableDiffusion()
-    stablediffusion.prepare(args)
-    stablediffusion.fit(args)
+    trainer = StableDiffusionTrainer()
+    trainer.prepare(args)
+    trainer.fit(args)

@@ -9,11 +9,11 @@
 
 from typing import Optional
 import torch
-import numpy as np
-from torch import nn, einsum
-from einops import rearrange, repeat
+from torch import nn
+from einops import rearrange
 
-from utils import zero_module
+from models.utils import zero_module
+
 
 class CrossAttention(nn.Module):
     """
@@ -52,10 +52,10 @@ class CrossAttention(nn.Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, query: torch.Tensor, context: torch.Tensor=None, mask: torch.Tensor=None):
+    def forward(self, query: torch.Tensor, context_emb: torch.Tensor=None, mask: torch.Tensor=None):
         """
         Cross attention forward pass
-        - first calculate similarity between query and context: sim = Q * K^T / sqrt(dk)
+        - first calculate similarity between query and context embedding: sim = Q * K^T / sqrt(dk)
         - then calculate attention value: attn = softmax(sim) * V
         - finally, linear projection and dropout
 
@@ -63,17 +63,17 @@ class CrossAttention(nn.Module):
             - query (torch.Tensor):   
                   feature map of shape `[batch, height*width, d_model]`
                   height*width is equivalent to tgt_len in origin transformer
-            - context (torch.Tensor, optional):   
+            - context_emb (torch.Tensor, optional):   
                   conditional embeddings of shape `[batch, seq_len, context_dim]`. Default: `None`.
                   seq_len is equivalent to src_len in origin transformer
             - mask (torch.Tensor, optional):   
                   mask of shape = `[batch, height*width, seq_len]`. Default: `None`.
                   actually never used...
         """
-        # if no context, equal to self-attention
-        if context is None:
-            context = query
-        Q, K, V = self.to_q(query), self.to_k(context), self.to_v(context)
+        # if no context_emb, equal to self-attention
+        if context_emb is None:
+            context_emb = query
+        Q, K, V = self.to_q(query), self.to_k(context_emb), self.to_v(context_emb)
         # q: [batch, h*w, d_attn] -> [batch * n_head, h*w, d_head]
         # k,v: [batch, seq_len, d_attn] -> [batch * n_head, seq_len, d_head]
         Q, K, V = map(lambda t: rearrange(t,"b n (n_heads d_head) -> (b n_heads) n d_head", n_heads=self.n_heads), (Q, K, V))
@@ -91,7 +91,8 @@ class CrossAttention(nn.Module):
         attn_v = torch.einsum("b n m,b m d->b n d", attn, V)
         attn_v = rearrange(attn_v, "(b n_heads) n d_head -> b n (n_heads d_head)", n_heads=self.n_heads)
         return self.out(attn_v)
-        
+
+
 class FeedForward(nn.Module):
     """
     origin paper use linear-relu-dropout-linear: `FFN(x) = max(0, xW1 + b1)W2 + b2`, equation(2) from Attention is all you need(https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html)
@@ -205,7 +206,7 @@ class BasicTransformerBlock(nn.Module):
         self.ffn = FeedForward(d_model, dropout=dropout)
         self.norm3 = nn.LayerNorm(d_model)
 
-    def forward(self, x: torch.Tensor, context: torch.Tensor):
+    def forward(self, x: torch.Tensor, context_emb: torch.Tensor):
         """
         forward pass of BasicTransformerBlock
 
@@ -222,11 +223,11 @@ class BasicTransformerBlock(nn.Module):
         """
         # check params
         assert x.shape[-1] == self.d_model, f"input dim {x.shape[-1]} should be equal to d_model {self.d_model}"
-        assert context.shape[-1] == self.context_dim, f"context dim {context.shape[-1]} should be equal to context_dim {self.context_dim}"
+        assert context_emb.shape[-1] == self.context_dim, f"context dim {context_emb.shape[-1]} should be equal to context_dim {self.context_dim}"
         # self attention
-        x = self.norm1(x + self.self_attn(x, context=None))
+        x = self.norm1(x + self.self_attn(x, context_emb=None))
         # cross attention
-        x = self.norm2(x + self.cross_attn(x, context=context))
+        x = self.norm2(x + self.cross_attn(x, context_emb=context_emb))
         # feed forward
         x = self.norm3(x + self.ffn(x))
         return x
@@ -279,14 +280,14 @@ class SpatialTransformer(nn.Module):
                 for _ in range(n_layers)])
         self.proj_out = zero_module(nn.Conv2d(in_channels, in_channels, kernel_size=1, padding=0))
 
-    def forward(self, x: torch.Tensor, context: torch.Tensor=None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, context_emb: torch.Tensor=None) -> torch.Tensor:
         """
         forward pass
 
         Args:
             - x (torch.Tensor):   
                   feature map of shape `[batch_size, channels, height, width]`
-            - context (torch.Tensor, optional):   
+            - context_emb (torch.Tensor, optional):   
                   conditional embeddings of shape `[batch_size,  seq_len, context_dim]`. Default: `None`.
 
         Returns:
@@ -295,15 +296,15 @@ class SpatialTransformer(nn.Module):
         """
         # check params
         assert x.shape[1] == self.in_channels, f"input channels {x.shape[1]} should be equal to in_channels {self.in_channels}"
-        if context is not None:
-            assert context.shape[-1] == self.context_dim, f"context dim {context.shape[-1]} should be equal to context_dim {self.context_dim}"
+        if context_emb is not None:
+            assert context_emb.shape[-1] == self.context_dim, f"context dim {context_emb.shape[-1]} should be equal to context_dim {self.context_dim}"
         # use for skip connection
         x_in = x
         x = self.norm(x)
         x = self.proj_in(x)
         x = rearrange(x, "b c h w -> b (h w) c")
         for module in self.transformer_blocks:
-            x = module(x, context=context)
+            x = module(x, context_emb=context_emb)
         x = rearrange(x, "b (h w) c -> b c h w", h=x_in.shape[2])
         x = self.proj_out(x)
         return x + x_in
