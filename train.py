@@ -137,9 +137,8 @@ def parse_args():
 
     return args
 
-class StableDiffusionTrainer():
 
-class StableDiffusion:
+class StableDiffusionTrainer:
     def __init__(self):
         pass
 
@@ -258,15 +257,28 @@ class StableDiffusion:
         self.__build_optimizer(args)
         # * 5. get dataset
         train_transforms = transforms.Compose(
-        [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-        self.train_dataloader = load_dataset(args.dataset, args.data_dir, self.tokenizer, train_transforms, args.train_batch_size, self.accelerator.num_processes)
+            [
+                transforms.Resize(
+                    args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
+                ),
+                transforms.CenterCrop(args.resolution)
+                if args.center_crop
+                else transforms.RandomCrop(args.resolution),
+                transforms.RandomHorizontalFlip()
+                if args.random_flip
+                else transforms.Lambda(lambda x: x),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+        self.train_dataloader = load_dataset(
+            args.dataset,
+            args.data_dir,
+            self.tokenizer,
+            train_transforms,
+            args.train_batch_size,
+            self.accelerator.num_processes,
+        )
         self.lr_scheduler = get_scheduler(
             args.lr_scheduler,
             optimizer=self.optimizer,
@@ -387,7 +399,7 @@ class StableDiffusion:
         noise = torch.randn(latent_vector)
         # * 2. Sample a random timestep for each image
         bsz = latent_vector.shape[0]
-        timesteps = torch.randint(0,1000, (bsz,), device=latent_vector.device)
+        timesteps = torch.randint(0, 1000, (bsz,), device=latent_vector.device)
         timesteps = timesteps.long()
         # * 3. add noise to latent vector
         x_t = self.noise_scheduler.add_noise(latent_vector, timesteps, noise)
@@ -401,8 +413,7 @@ class StableDiffusion:
         return F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     trainer = StableDiffusionTrainer()
     trainer.prepare(args)
