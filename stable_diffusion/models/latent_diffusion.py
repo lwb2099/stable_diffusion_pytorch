@@ -1,42 +1,38 @@
-
 import torch
 from tqdm import tqdm
 
 from autoencoder import AutoEncoderKL
-from models.unet import UNetModel
 from stable_diffusion.models.clip_model import CLIPModel
 from stable_diffusion.models.scheduler import DDPMScheduler
+from stable_diffusion.models.unet import UNetModel
 
 
 class LatentDiffusion:
-    def __init__(self, 
-                 unet: UNetModel, 
-                 autoencoder: AutoEncoderKL,
-                 text_encoder: CLIPModel,
-                 scheduler: DDPMScheduler,
-                 scale_factor: float=1.,
-                 noise_steps: int=1000,
-                 ):
+    def __init__(
+        self,
+        unet: UNetModel,
+        autoencoder: AutoEncoderKL,
+        text_encoder: CLIPModel,
+        noise_scheduler: DDPMScheduler,
+    ):
         """main class"""
         super().__init__()
         self.unet = unet
         self.autoencoder = autoencoder
-        self.scale_factor = scale_factor
         self.text_encoder = text_encoder
-        self.scheduler = scheduler
-        self.noise_steps = noise_steps
-    
+        self.noise_scheduler = noise_scheduler
+
     def encode_text(self, text):
         """Encode text to text embedding
         Args:
-            - text (str): 
+            - text (str):
                   text to encode, shape = [batch, seq_len]
         Returns:
             - text_embedding (torch.Tensor):
                   text embedding, shape = [batch, seq_len, d_model]
         """
         return self.text_encoder.encode(text)
-    
+
     def autoencoder_encode(self, x):
         """
         Encode image into latent vector
@@ -48,99 +44,104 @@ class LatentDiffusion:
                   latent vector, shape = `[batch, d_model]`
         """
         return self.autoencoder.encode(x)
-    
+
     def autoencoder_decode(self, z):
         """
         decode latent vector to image
         """
         return self.autoencoder.decode(z)
-    
-    def pred_noise(self, 
-                    noised_sample: torch.Tensor,
-                    time_step: torch.Tensor,
-                    context_emb: torch.Tensor,
-                    guidance_scale: float=1.,
-                    ):
+
+    def pred_noise(
+        self,
+        noised_sample: torch.Tensor,
+        time_step: torch.Tensor,
+        context_emb: torch.Tensor,
+        guidance_scale: float = 1.0,
+    ):
         """
         forward pass that predicts the noise added on latent vector at time step=t
 
         Args:
-            - x (torch.Tensor):   
+            - x (torch.Tensor):
                   noised latent vector, shape = `[batch, channels, height, width]`
-            - time_steps (torch.Tensor):   
+            - time_steps (torch.Tensor):
                   time steps, shape = `[batch]`
-            - context_emb (torch.Tensor):   
+            - context_emb (torch.Tensor):
                   conditional embedding, shape = `[batch, seq_len, d_model]`
 
         Returns:
-            - pred noise (torch.Tensor):   
+            - pred noise (torch.Tensor):
                   predicted noise, shape = `[batch, channels, height, width]`
         """
         do_classifier_free_guidance = guidance_scale == 1
         bsz = noised_sample.shape[0]
         if not do_classifier_free_guidance:
-            pred_noise = self.model(noised_sample, time_step, context_emb)
+            return self.model(noised_sample, time_step, context_emb)
         else:
             t_in = torch.cat([time_step] * 2)
             x_in = torch.cat([noised_sample] * 2)
             uncond_emb = self.text_encoder.encode([""] * bsz)
             c_in = torch.cat([uncond_emb, context_emb])
             pred_noise_cond, pred_noise_uncond = self.model(x_in, t_in, c_in).chuck(2)
-            pred_noise = pred_noise_cond + guidance_scale * (pred_noise_cond - pred_noise_uncond)
-            return pred_noise
+            return pred_noise_cond + guidance_scale * (
+                pred_noise_cond - pred_noise_uncond
+            )
 
-    def sample(self, 
-               noised_sample: torch.Tensor,
-               context_emb: torch.Tensor,
-               guidence_scale: float=1.,
-               repeat_noise: bool=False,
-               scale_factor: float=1.,
-               ):
+    def sample(
+        self,
+        noised_sample: torch.Tensor,
+        context_emb: torch.Tensor,
+        guidence_scale: float = 7.5,
+        repeat_noise: bool = False,
+        scale_factor: float = 1.0,
+    ):
         """
-        Sample x_0 given original x_t and condition
+        Sample loop to get x_0 given x_t and conditional embedding
 
         Args:
-            - noised_sample (torch.Tensor):   
-                  origin noise or noised latent, shape = `[batch, channels, height, width]`
-            - time_step (torch.Tensor):   
-                  _description_
-            - prompt (torch.Tensor):   
-                  _description_
-            - clip_guidence_scale (float, optional):   
-                  _description_. Default: `1.`.
+            - noised_sample (torch.Tensor):
+                  original x_t of shape=`[batch, channels, height, width]`
+            - context_emb (torch.Tensor):
+                  conditional embedding of shape=`[batch, seq_len, context_dim]`
+            - guidence_scale (float, optional):
+                  scale used for classifer free guidance. Default: `7.5`.
+            - repeat_noise (bool, optional):
+                  whether use the same noise in a batch duuring each p_sample. Default: `False`.
+            - scale_factor (float, optional):
+                  scaling factor of noise. Default: `1.0`.
 
         Returns:
-            - _type_:   
-                  _description_
+            - x_0 (torch.Tensor):
+                  denoised latent x_0 of shape=`[batch, channels, height, width]`
         """
-        device = self.model.device
         bsz = noised_sample.shape[0]
 
         # Get x_T
         x = noised_sample
 
         # Time steps to sample at $T - t', T - t' - 1, \dots, 1$
-        time_steps = torch.arange(self.noise_steps, 0, -1, device=device)
+        time_steps = torch.arange(
+            self.noise_scheduler.noise_steps, 0, -1, device=self.noise_scheduler.device
+        )
 
-        
         # Sampling loop
-        progress_bar = tqdm(time_steps, desc='Sampling')
+        progress_bar = tqdm(time_steps, desc="Sampling")
         for step in progress_bar:
             # fill time step t from int to tensor of shape=`[batch]`
             time_step = x.new_full((bsz,), step, dtype=torch.long)
-            pred_noise = self.pred_noise(noised_sample=x, time_step=time_step, context_emb=context_emb, guidance_scale=guidence_scale)
+            pred_noise = self.pred_noise(
+                noised_sample=x,
+                time_step=time_step,
+                context_emb=context_emb,
+                guidance_scale=guidence_scale,
+            )
             # Sample x_{t-1}
-            x, pred_x0 = self.scheduler.step(
+            x, pred_x0 = self.noise_scheduler.step(
                 pred_noise=pred_noise,
                 x_t=x,
                 time_step=step,
                 repeat_noise=repeat_noise,
-                scale_factor=self.scale_factor,
+                scale_factor=scale_factor,
             )
         # Return $x_0$
         return x
-
-        
-       
-
-

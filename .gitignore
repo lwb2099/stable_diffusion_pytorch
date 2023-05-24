@@ -1,5 +1,8 @@
 # Data
-datasets
+
+
+# ckpt
+models
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
