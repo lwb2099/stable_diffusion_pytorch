@@ -1,7 +1,32 @@
 from transformers import CLIPTextModel, CLIPTokenizer
+from torch import nn
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+from stable_diffusion.dataclass import BaseDataclass
 
 
-class CLIPModel:
+@dataclass
+class ClipConfig(BaseDataclass):
+    tokenizer: str = field(
+        default="openai/clip-vit-base-patch32",
+        metadata={"help": "Tokenizer to use for text encoding."},
+    )
+    text_encoder: str = field(
+        default="openai/clip-vit-base-patch32",
+        metadata={"help": "Text encoder model to use."},
+    )
+    max_seq_len: int = field(
+        default=77, metadata={"help": "Maximum sequence length for tokenized text."}
+    )
+    cache_dir: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to a directory to store the pretrained CLIP model."},
+    )
+
+
+class CLIPModel(nn.Module):
     @staticmethod
     def add_clip_args(model_parser):
         clip_group = model_parser.add_argument_group("clip")
@@ -21,11 +46,6 @@ class CLIPModel:
             default=77,
         )
         clip_group.add_argument(
-            "--context_dim",
-            type=int,
-            default=768,
-        )
-        clip_group.add_argument(
             "--cache_dir",
             type=str,
             default=None,
@@ -40,7 +60,6 @@ class CLIPModel:
         """main class"""
         super().__init__()
         self.max_seq_len = cfg.max_seq_len
-        self.context_dim = cfg.context_dim
         self.text_encoder = CLIPTextModel.from_pretrained(
             cfg.text_encoder, cache_dir=cfg.cache_dir
         )
@@ -67,3 +86,6 @@ class CLIPModel:
         if isinstance(text, str):
             text = self.tokenize(text)
         return self.text_encoder(text.input_ids)[0]
+
+    def forward(self, text):
+        return self.text_encoder(text)

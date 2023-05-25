@@ -7,73 +7,53 @@
 @Desc    :   implementation of Unet2d model and sub modules
 """
 
-from abc import abstractmethod
-from typing import List
 import numpy as np
 import torch
 import torch.nn as nn
-from utils import (
-    build_bottleneck,
+
+from stable_diffusion.dataclass import BaseDataclass
+from .utils import (
     build_conv_in,
-    build_final_output,
     build_input_blocks,
+    build_bottleneck,
     build_output_blocks,
+    build_final_output,
 )
-from ..modules.resnet2d import ResBlock
-from ..modules.timestep_embedding import sinusoidal_time_step_embedding
-from ..modules.transformer import SpatialTransformer
+
+from ..modules.timestep_embedding import sinusoidal_time_proj
+
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
-class TimestepBlock(nn.Module):
-    """
-    Any module where forward() takes timestep embeddings as a second argument.
-    """
-
-    @abstractmethod
-    def forward(self, x, time_emb):
-        pass
-
-
-class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
-    def forward(
-        self, x: torch.Tensor, time_emb: torch.Tensor, context: torch.Tensor = None
-    ):
-        """
-        forward pass of TimestepEmbeddingSequential
-
-        passed in layers are basically:
-            `ResBlock`, `Conv2d`, `UpSample`,`DownSample`, `SpatialTransformer`
-        apply different forward pass depending on instance type
-
-        Args:
-            - x (Tensor):
-                  input shape=[batch, in_channels, height, width]
-            - time_emb (Tensor):
-                  input shape=[batch, time_emb_dim]
-            - context (Tensor, optional):
-            #TODO: figure out shape
-                  input shape=[]. Default: None.
-
-        Returns:
-            - Tensor:
-                - output shape:
-                    - `ResBlock`:           [batch, out_channels, height, width]
-                    - `SpatialTransformer`: [batch, out_channels, height, width]
-                    - `Conv2d`:             [batch, out_channels, height, width]
-                    - `UpSample`:           [batch, out_channels, height*scale_factor, width*scale_factor]
-                    - `DownSample`:         [batch, out_channels, height/scale_factor, width/scale_factor]
-        """
-        for module in self:
-            # pass ResBlock
-            if isinstance(module, ResBlock):
-                x = module(x, time_emb)
-            # pass spatial transformer
-            elif isinstance(module, SpatialTransformer):
-                x = module(x, context)
-            # pass Conv2d, UpSample, DownSample
-            else:
-                x = module(x)
-        return x
+@dataclass
+class UnetConfig(BaseDataclass):
+    num_res_blocks: int = field(
+        default=2, metadata={"help": "Number of residual blocks at each level."}
+    )
+    n_heads: int = field(
+        default=1, metadata={"help": "Number of attention heads in transformers."}
+    )
+    attention_resolutions: List[int] = field(
+        default_factory=lambda: [1],
+        metadata={
+            "help": "At which level attention should be performed. e.g., [1, 2] means attention is performed at level 1 and 2."
+        },
+    )
+    channels_list: List[int] = field(
+        default_factory=lambda: [64, 128], metadata={"help": "Channels at each level."}
+    )
+    time_emb_dim: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Time embedding dimension. If not specified, use 4 * channels_list[0] instead."
+        },
+    )
+    dropout: float = field(default=0.0, metadata={"help": "Dropout rate."})
+    n_layers: int = field(default=1, metadata={"help": "Number of transformer layers."})
+    context_dim: int = field(
+        default=768, metadata={"help": "Embedding dim of context condition."}
+    )
 
 
 class UNetModel(nn.Module):
@@ -110,7 +90,7 @@ class UNetModel(nn.Module):
         - out_channels (int):
                 number of channels in the output feature map
         - channels (int):
-                #? base channel count for the model
+                base channel count for the model
         - num_res_blocks (int):
                 number of residual blocks at each level
         - n_heads (int):
@@ -133,24 +113,6 @@ class UNetModel(nn.Module):
     def add_unet_args(parser):
         unet_group = parser.add_argument_group("unet")
         unet_group.add_argument(
-            "--in_channels",
-            type=int,
-            default=3,
-            help="number of channels in the input feature map",
-        )
-        unet_group.add_argument(
-            "--out_channels",
-            type=int,
-            default=3,
-            help="number of channels in the output feature map",
-        )
-        unet_group.add_argument(
-            "--channels",
-            type=int,
-            default=256,
-            help="base channel count for the model",
-        )
-        unet_group.add_argument(
             "--num_res_blocks",
             type=int,
             default=2,
@@ -170,11 +132,17 @@ class UNetModel(nn.Module):
             help="at which level should attention be performed. e.g. [1, 2] means attention is performed at level 1 and 2.",
         )
         unet_group.add_argument(
-            "--channel_mult",
+            "--channels_list",
             type=int,
             nargs="+",
-            default=[1, 2, 4],
-            help="channel multiplier for each level of the UNet. e.g. [1, 2, 4] means the first level has 1*channel, second level has 2*channel, third level has 4*channel.",
+            default=[64, 128],
+            help="channels at each level",
+        )
+        unet_group.add_argument(
+            "--time_emb_dim",
+            type=int,
+            default=None,
+            help="time embedding dimension, if not specified, use 4 * channels_list[0] instead",
         )
         unet_group.add_argument(
             "--dropout",
@@ -197,49 +165,31 @@ class UNetModel(nn.Module):
 
     def __init__(
         self,
-        cfg,
-        in_channels: int,
-        out_channels: int,
-        channels: int,
-        num_res_blocks: int,
-        n_heads: int,
-        attention_resolutions: List[int],
-        channel_mult: List[int],
-        dropout: float = 0.0,
-        n_layers: int = 1,
-        context_dim: int = 768,
+        latent_channels,
+        cfg,  # unet config
     ):
         super().__init__()
-        in_channels = cfg.in_channels
-        out_channels = cfg.out_channels
-        channels = cfg.channels
         num_res_blocks = cfg.num_res_blocks
         n_heads = cfg.n_heads
         attention_resolutions = cfg.attention_resolutions
-        channel_mult = cfg.channel_mult
+        channels_list = cfg.channels_list
         dropout = cfg.dropout
         n_layers = cfg.n_layers
         context_dim = cfg.context_dim
         self.context_dim = cfg.context_dim
-        # check parameters
-        # attention can't be performed on levels that don't exists
-        assert max(attention_resolutions) <= len(
-            channel_mult
-        ), f"attention_resolutions({attention_resolutions}) should be less than len(channel_mult)({len(channel_mult)})"
 
         # * 1. time emb
-        time_emb_dim = channels * 4
-        self.time_emb = nn.Sequential(
-            nn.Linear(channels, time_emb_dim),
+        time_emb_dim = cfg.time_emb_dim or channels_list[0] * 4
+        timestep_input_dim = channels_list[0]
+        self.time_embedding = nn.Sequential(
+            nn.Linear(timestep_input_dim, time_emb_dim),
             nn.SiLU(),
             nn.Linear(time_emb_dim, time_emb_dim),
         )
         # * 2. conv in
-        self.conv_in = build_conv_in(in_channels, channels)
+        self.conv_in = build_conv_in(latent_channels, channels_list[0])
         # num of levels
-        levels = len(channel_mult)
-        # Number of channels at each level
-        channels_list = [channels * m for m in channel_mult]
+        levels = len(channels_list)
         # * 3. input blocks
         (
             self.input_blocks,
@@ -248,8 +198,7 @@ class UNetModel(nn.Module):
             d_head,
             attn_mult,
         ) = build_input_blocks(
-            in_channels,
-            channels,
+            channels_list[0],
             num_res_blocks,
             attention_resolutions,
             n_heads,
@@ -282,11 +231,9 @@ class UNetModel(nn.Module):
             attn_mult,
         )
         # * 6. final output
-        self.out = build_final_output(out_ch, out_channels)
+        self.out = build_final_output(out_ch, latent_channels)
 
-    def time_step_embedding(
-        self, time_steps: torch.Tensor, max_len: int = 10000
-    ) -> torch.Tensor:
+    def time_proj(self, time_steps: torch.Tensor, max_len: int = 10000) -> torch.Tensor:
         """
         time_step_embedding use sinusoidal time step embedding as default, feel free to try out other embeddings
 
@@ -300,7 +247,7 @@ class UNetModel(nn.Module):
             - torch.Tensor:
                   time embedding of shape `[batch, emb_dim]`
         """
-        return sinusoidal_time_step_embedding(time_steps, channels, max_len)
+        return sinusoidal_time_proj(time_steps, channels, max_len)
 
     def forward(
         self, x: torch.Tensor, timesteps: torch.Tensor, context_emb: torch.Tensor = None
@@ -329,7 +276,7 @@ class UNetModel(nn.Module):
         # store input blocks for skip connection
         x_input_blocks = []
         # * Get time embedding
-        time_emb = self.time_step_embedding(timesteps)
+        time_emb = self.time_proj(timesteps)
         time_emb = self.time_emb(time_emb)
         # * conv in layer
         x = self.conv_in(x)

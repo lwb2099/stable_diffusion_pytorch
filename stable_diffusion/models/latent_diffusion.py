@@ -1,7 +1,7 @@
 import torch
 from tqdm import tqdm
 
-from autoencoder import AutoEncoderKL
+from stable_diffusion.models.autoencoder import AutoEncoderKL
 from stable_diffusion.models.clip_model import CLIPModel
 from stable_diffusion.models.scheduler import DDPMScheduler
 from stable_diffusion.models.unet import UNetModel
@@ -120,9 +120,6 @@ class LatentDiffusion:
         x = noised_sample
 
         # Time steps to sample at $T - t', T - t' - 1, \dots, 1$
-        time_steps = torch.arange(
-            self.noise_scheduler.noise_steps, 0, -1, device=self.noise_scheduler.device
-        )
 
         # Sampling loop
         progress_bar = tqdm(time_steps, desc="Sampling")

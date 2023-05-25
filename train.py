@@ -8,17 +8,23 @@
 """
 
 import argparse
+
+# from omegacli import OmegaConf
+
+from omegaconf import OmegaConf
 import math
 import os
-from typing import Any, Tuple, Union
+
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
 import logging
 from diffusers.optimization import get_scheduler
+from omegaconf import DictConfig
 from stable_diffusion.models.latent_diffusion import LatentDiffusion
 from utils.checkpointing import add_checkpoint_args
-from utils.load_models import add_model_args, build_models
+from utils.model_utils import add_model_args, build_models
+from utils.parse_args import load_config
 from utils.prepare_dataset import add_dataset_args, get_dataset
 import numpy as np
 import torch
@@ -34,87 +40,6 @@ logging.basicConfig(
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO,
 )
-
-
-def get_training_parser():
-    parser = argparse.ArgumentParser("Trainer")
-    add_distributed_training_args(parser)
-    add_model_args(parser)
-    add_dataset_args(parser)
-    add_optimization_args(parser)
-    add_lr_scheduler_args(parser)
-    add_checkpoint_args(parser)
-
-    return parser
-
-
-def add_distributed_training_args(parser: argparse.ArgumentParser):
-    train_group = parser.add_argument_group("train")
-    train_group.add_argument(
-        "--logging_dir", type=str, default="logs", help="log directory"
-    )
-    train_group.add_argument(
-        "--tracker",
-        type=str,
-        default=None,
-    )
-    train_group.add_argument("--seed", type=int, default=0)
-    train_group.add_argument(
-        "--train_batch_size",
-        type=int,
-        default=1,
-    )
-    train_group.add_argument(
-        "--max_train_steps",
-        type=int,
-        default=1000,
-        help="total train steps, if provided, overrides max_train_epochs",
-    )
-    train_group.add_argument(
-        "--max_train_epochs",
-        type=int,
-        default=100,
-        help="max train epochs, orverides by max_training_steps",
-    )
-    train_group.add_argument(
-        "--eval_batch_size",
-        type=int,
-        default=1,
-    )
-    train_group.add_argument(
-        "--gradient_accumulation_steps",
-        type=int,
-        default=1,
-    )
-
-
-def add_optimization_args(parser):
-    optim_group = parser.add_argument_group("optim")
-    optim_group.add_argument(
-        "--learning_rate",
-        type=float,
-        default=1e-4,
-    )
-    optim_group.add_argument("--adam_weight_decay", type=float, default=0.1)
-    optim_group.add_argument(
-        "--use_8bit_adam",
-        action="store_true",
-        default=False,
-    )
-
-
-def add_lr_scheduler_args(parser):
-    lr_scheduler_group = parser.add_argument_group("lr_scheduler")
-    lr_scheduler_group.add_argument(
-        "--type",
-        type=str,
-        default="linear",
-    )
-    lr_scheduler_group.add_argument(
-        "--lr_warmup_steps",
-        type=int,
-        default=0,
-    )
 
 
 class StableDiffusionTrainer:
@@ -176,14 +101,18 @@ class StableDiffusionTrainer:
             self.train_dataloader,
             self.eval_dataloader,
             self.lr_scheduler,
-        ): Tuple[LatentDiffusion, Any, DataLoader, DataLoader, Any] = self.accelerator.prepare(
+        ) = self.accelerator.prepare(
             self.model,
             self.optimizer,
             self.train_dataloader,
             self.eval_dataloader,
             self.lr_scheduler,
         )
-        # * 6. Move text_encoder and vae to gpu and cast to weight_dtype
+        # * enable variable annotations so that we can easily debug
+        self.model: LatentDiffusion = self.model
+        self.train_dataloader: DataLoader = self.train_dataloader
+        self.eval_dataloader: DataLoader = self.eval_dataloader
+        # * 6. Move text_encoder and autoencoder to gpu and cast to weight_dtype
         self.weight_dtype = torch.float32
         if self.accelerator.mixed_precision == "fp16":
             self.weight_dtype = torch.float16
@@ -191,20 +120,6 @@ class StableDiffusionTrainer:
             self.weight_dtype = torch.bfloat16
         self.model.text_encoder.to(self.accelerator.device, dtype=self.weight_dtype)
         self.model.autoencoder.to(self.accelerator.device, dtype=self.weight_dtype)
-        # * 7. Resume from checkpoint
-        self.__resume_from_checkpoint(args)
-        total_batch_size = (
-            args.train_batch_size
-            * self.accelerator.num_processes
-            * args.gradient_accumulation_steps
-        )
-        logger.info("**********************************************")
-        logger.info(f"Total training data: {len(self.train_dataloader)}")
-        logger.info(f"Total update steps: {args.max_train_steps}")
-        logger.info(f"Total Epochs: {args.max_train_epochs}")
-        logger.info(f"Total Batch size: {total_batch_size}")
-        logger.info(f"Resume from epoch={self.start_epoch}, step={self.resume_step}")
-        logger.info("**********************************************")
 
     def get_dataloader(
         self, dataset, collate_fn, batch_size, num_workers
@@ -238,10 +153,9 @@ class StableDiffusionTrainer:
             weight_decay=optim_args.adam_weight_decay,
         )
 
-    def __resume_from_checkpoint(self, args):
+    def __resume_state(self, args):
         """
-        Load checkpoints, copy from diffusers, examples/train_text_to_image, line 750 or so
-        slightly modified
+        Load checkpoints and resume train states
         """
         if args.resume_from_checkpoint:
             ckpt_path = os.path.basename(args.resume_from_checkpoint)
@@ -286,7 +200,20 @@ class StableDiffusionTrainer:
         )
 
     def train(self):
-        logger.info("Start Training")
+        # * 7. Resume training state
+        self.__resume_state(args)
+        total_batch_size = (
+            args.train_batch_size
+            * self.accelerator.num_processes
+            * args.gradient_accumulation_steps
+        )
+        logger.info("****************Start Training******************")
+        logger.info(f"Total training data: {len(self.train_dataloader)}")
+        logger.info(f"Total update steps: {args.max_train_steps}")
+        logger.info(f"Total Epochs: {args.max_train_epochs}")
+        logger.info(f"Total Batch size: {total_batch_size}")
+        logger.info(f"Resume from epoch={self.start_epoch}, step={self.resume_step}")
+        logger.info("**********************************************")
         self.progress_bar = tqdm(
             range(self.resume_step, args.max_train_steps),
             disable=not self.accelerator.is_main_process,
@@ -338,11 +265,10 @@ class StableDiffusionTrainer:
                         logger.info(f"Saved state to {save_path}")
 
             logs = {
-                "step_loss": loss.detach().item(),
+                "loss": loss.detach().item(),
                 "lr": self.lr_scheduler.get_last_lr()[0],
             }
             self.progress_bar.set_postfix(**logs)
-
             if self.global_step >= args.max_train_steps:
                 break
 
@@ -352,10 +278,10 @@ class StableDiffusionTrainer:
 
         Args:
             - batch (_type_):
-                  _description_
+                  a batch of data, contains: #TODO:
 
         Returns:
-            - _type_:
+            - torch.Tensor:
                   mse loss between sampled real noise and pred noise
         """
         # * 1. encode image
@@ -366,18 +292,19 @@ class StableDiffusionTrainer:
         )
         noise = torch.randn(latent_vector)
         # * 2. Sample a random timestep for each image
-        bsz = latent_vector.shape[0]
-        timesteps = torch.randint(0, 1000, (bsz,), device=latent_vector.device)
+        timesteps = torch.randint(
+            self.model.noise_scheduler.timesteps, (batch.shape[0],)
+        )
         timesteps = timesteps.long()
         # * 3. add noise to latent vector
-        x_t = self.noise_scheduler.add_noise(latent_vector, timesteps, noise)
+        x_t = self.model.noise_scheduler.add_noise(latent_vector, timesteps, noise)
         # * 4. get text encoding latent
         text_condition = self.text_encoder(batch["input_ids"])[0]
         # 90 % of the time we use the true text encoding, 10 % of the time we use an epmty string
         if np.random.random() < 0.1:
             text_condition = None
         # * 5. predict noise
-        pred_noise = self.unet(x_t, timesteps, text_condition)
+        pred_noise = self.model.unet(x_t, timesteps, text_condition)
         return F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
 
     def save_model(
@@ -387,10 +314,10 @@ class StableDiffusionTrainer:
 
 
 if __name__ == "__main__":
-    args: argparse.Namespace = get_training_parser().parse_args()
-    model = build_models(args)
+    args = load_config()
+    model = build_models(args.model)
     train_dataset = get_dataset(args.dataset)
-    eval_dataset = get_dataset(model)
+    eval_dataset = get_dataset(args.dataset, split="validation")
     trainer = StableDiffusionTrainer(
         model,
         args,

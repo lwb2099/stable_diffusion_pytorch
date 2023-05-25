@@ -10,6 +10,30 @@ from huggingface_hub import snapshot_download
 from datasets import load_dataset
 from transformers import CLIPTokenizer
 
+from dataclasses import dataclass, field
+
+from stable_diffusion.dataclass import BaseDataclass
+
+
+@dataclass
+class DatasetConfig(BaseDataclass):
+    dataset: str = field(
+        default="Norod78/simpsons-blip-captions",
+        metadata={"help": "Specify the dataset to use."},
+    )
+    data_dir: str = field(
+        default="data", metadata={"help": "Specify the data directory path."}
+    )
+    resolution: int = field(
+        default=64, metadata={"help": "Specify the resolution of the images."}
+    )
+    center_crop: bool = field(
+        default=True, metadata={"help": "Specify whether to apply center cropping."}
+    )
+    random_flip: bool = field(
+        default=True, metadata={"help": "Specify whether to apply random flipping."}
+    )
+
 
 def add_dataset_args(parser):
     dataset_group = parser.add_argument_group("dataset")
@@ -21,7 +45,7 @@ def add_dataset_args(parser):
     dataset_group.add_argument(
         "--data_dir",
         type=str,
-        default="datasets",
+        default="data",
     )
     dataset_group.add_argument(
         "--resolution",

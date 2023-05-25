@@ -1,15 +1,30 @@
-import numpy as np
 from torch import nn
 import torch
-from typing import Optional, List
-from stable_diffusion.models.latent_diffusion import LatentDiffusion
+from typing import List
+from dataclasses import dataclass, field
+
+from stable_diffusion.dataclass import BaseDataclass
+
+
+@dataclass
+class DDPMConfig(BaseDataclass):
+    noise_schedule: str = field(
+        default="linear",
+        metadata={
+            "help": "Noise schedule type.",
+            "choices": ["linear", "cosine", "cubic"],
+        },
+    )
+    noise_steps: int = field(default=1000, metadata={"help": "Number of noise steps."})
+    beta_start: float = field(
+        default=1e-4, metadata={"help": "Starting value of beta."}
+    )
+    beta_end: float = field(default=0.02, metadata={"help": "Ending value of beta."})
 
 
 class DDPMScheduler(nn.Module):
     @staticmethod
-    def add_noise_schedule_args(
-        parser,
-    ):
+    def add_ddpm_args(parser):
         noise_group = parser.add_argument_group("ddpm")
         noise_group.add_argument(
             "--noise_schedule",
@@ -37,6 +52,9 @@ class DDPMScheduler(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self.noise_steps = cfg.noise_steps
+        self.noise_time_steps: torch.Tensor[List[int]] = torch.arange(
+            self.noise_steps, 0, -1
+        )
         self.betas = self.prepare_linear_noise_schedule(cfg.beta_start, cfg.beta_end)
         self.alpha = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alpha, dim=0)
@@ -197,30 +215,30 @@ class DDPMScheduler(nn.Module):
             x0,
         )
 
-    @torch.no_grad()
-    def add_noise(
-        self, x0: torch.Tensor, time_step: int, noise: Optional[torch.Tensor] = None
-    ):
-        """
-        add noise on x_t_1 to get x_t, i.e. sample from q(x_t | x_t_1)
+    # @torch.no_grad()
+    # def add_noise(
+    #     self, x0: torch.Tensor, time_step: int, noise: Optional[torch.Tensor] = None
+    # ):
+    #     """
+    #     add noise on x_t_1 to get x_t, i.e. sample from q(x_t | x_t_1)
 
-        Args:
-            - x0 (torch.Tensor):
-                  origin latent vector, shape=`[batch, channels, height, width]`
-            - time_step (int):
-                  time step to add noise on
-            - noise (Optional[torch.Tensor], optional):
-                  random noise, shape=`[batch, channels, height, width]`. Default: `None`.
+    #     Args:
+    #         - x0 (torch.Tensor):
+    #               origin latent vector, shape=`[batch, channels, height, width]`
+    #         - time_step (int):
+    #               time step to add noise on
+    #         - noise (Optional[torch.Tensor], optional):
+    #               random noise, shape=`[batch, channels, height, width]`. Default: `None`.
 
-        Returns:
-            - noised latent (torch.Tensor):
-                  x_t, shape=`[batch, channels, height, width]`
-        """
-        # Random noise, if noise is not specified
-        if noise is None:
-            noise = torch.randn_like(x0)
-        # Sample from $\mathcal{N} \Big(x_t; \sqrt{\bar\alpha_t} x_0, (1-\bar\alpha_t) \mathbf{I} \Big)$
-        return (
-            self.sqrt_alpha_bar[time_step] * x0
-            + self.sqrt_1m_alpha_bar[time_step] * noise
-        )
+    #     Returns:
+    #         - noised latent (torch.Tensor):
+    #               x_t, shape=`[batch, channels, height, width]`
+    #     """
+    #     # Random noise, if noise is not specified
+    #     if noise is None:
+    #         noise = torch.randn_like(x0)
+    #     # Sample from $\mathcal{N} \Big(x_t; \sqrt{\bar\alpha_t} x_0, (1-\bar\alpha_t) \mathbf{I} \Big)$
+    #     return (
+    #         self.sqrt_alpha_bar[time_step] * x0
+    #         + self.sqrt_1m_alpha_bar[time_step] * noise
+    #     )
