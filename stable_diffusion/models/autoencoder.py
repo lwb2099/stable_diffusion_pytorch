@@ -42,6 +42,7 @@ class AutoencoderConfig(BaseDataclass):
     autoencoder_num_res_blocks: int = field(
         default=2, metadata={"help": "Number of residual blocks per level."}
     )
+    groups: int = field(default=4, metadata={"help": "Number of groups for GroupNorm."})
 
 
 class AutoEncoderKL(nn.Module):
@@ -79,6 +80,12 @@ class AutoEncoderKL(nn.Module):
             default=2,
             help="number of residual blocks per level",
         )
+        autoencoder.add_argument(
+            "--groups",
+            type=int,
+            default=4,
+            help="number of groups for GroupNorm",
+        )
 
     def __init__(
         self,
@@ -106,6 +113,7 @@ class AutoEncoderKL(nn.Module):
             out_channels=cfg.latent_channels,
             channels_list=cfg.autoencoder_channels_list,
             num_res_blocks=cfg.autoencoder_num_res_blocks,
+            groups=cfg.groups,
         )
 
     @staticmethod
@@ -113,11 +121,21 @@ class AutoEncoderKL(nn.Module):
         return Decoder(
             in_channels=cfg.latent_channels,
             out_channels=cfg.out_channels or cfg.in_channels,
-            channels_list=cfg.channels_list,
-            num_res_blocks=cfg.num_res_blocks,
+            channels_list=cfg.autoencoder_channels_list,
+            num_res_blocks=cfg.autoencoder_num_res_blocks,
+            groups=cfg.groups,
         )
 
     def encode(self, img: torch.Tensor) -> GaussianDistribution:
+        """
+        Encode image into latent vector
+        Args:
+            - x (torch.Tensor):
+                  image, shape = `[batch, channel, height, width]`
+        Returns:
+            - gaussian distribution (torch.Tensor):
+
+        """
         z = self.encoder(img)
         # Get the moments in the quantized embedding space
         moments = self.quant_conv(z)
@@ -147,25 +165,34 @@ class Encoder(nn.Module):
         out_channels: int,
         channels_list: List[int],
         num_res_blocks: int,
+        groups: int = 4,
     ):
         super(Encoder, self).__init__()
-        self.conv_in = build_conv_in(in_channels, channels_list[0])
+        self.conv_in = build_conv_in(
+            in_channels=in_channels, out_channels=channels_list[0]
+        )
         levels = len(channels_list)
-        self.down, mid_ch = build_input_blocks(
-            in_channels=in_channels,
-            channels=channels_list[0],
+        self.down, _, mid_ch, _, _ = build_input_blocks(
+            in_channels=channels_list[0],
             num_res_blocks=num_res_blocks,
             levels=levels,
             channels_list=channels_list,
+            groups=groups,
         )
-        self.bottleneck = build_bottleneck(mid_ch, d_head=mid_ch, use_attn_only=True)
-        self.out = build_final_output(mid_ch, out_channels)
+        self.bottleneck = build_bottleneck(
+            mid_ch, d_head=mid_ch, use_attn_only=True, groups=groups
+        )
+        self.out = build_final_output(
+            out_ch=mid_ch, out_channels=2 * out_channels, groups=groups
+        )
 
     def forward(self, x):
         x = self.conv_in(x)
-        x = self.down(x)
+        for module in self.down:
+            x = module(x)
         x = self.bottleneck(x)
-        x = self.out(x)
+        for module in self.out:
+            x = module(x)
         return x
 
 
@@ -176,15 +203,36 @@ class Decoder(nn.Module):
         out_channels: int,
         channels_list: List[int],
         num_res_blocks: int,
+        groups: int = 4,
     ):
         super(Decoder, self).__init__()
-        self.conv_in = build_conv_in(in_channels, channels_list[0])
+        self.conv_in = build_conv_in(
+            in_channels=in_channels, out_channels=channels_list[0]
+        )
         levels = len(channels_list)
-        self.down, mid_ch = build_output_blocks(
+        self.bottleneck = build_bottleneck(
+            in_ch=channels_list[0],
+            d_head=channels_list[0],
+            use_attn_only=True,
+            groups=groups,
+        )
+        self.up, mid_ch = build_output_blocks(
             num_res_blocks=num_res_blocks,
-            in_ch=in_channels,
+            in_ch=channels_list[0],
             levels=levels,
             channels_list=channels_list,
+            groups=groups,
         )
-        self.bottleneck = build_bottleneck(mid_ch, d_head=mid_ch, use_attn_only=True)
-        self.out = build_final_output(mid_ch, out_channels)
+
+        self.out = build_final_output(
+            out_ch=mid_ch, out_channels=out_channels, groups=groups
+        )
+
+    def forward(self, x):
+        x = self.conv_in(x)
+        x = self.bottleneck(x)
+        for module in self.up:
+            x = module(x)
+        for module in self.out:
+            x = module(x)
+        return x

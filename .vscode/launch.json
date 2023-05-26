@@ -5,10 +5,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "test current file",
+            "name": "test unet",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "test/test_unet.py",
             "console": "integratedTerminal",
             "justMyCode": true,
         },
@@ -20,12 +20,39 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "--config_file", "stable_diffusion/config/accelerate_config/deepseed.yaml",
+                "--config_file", "stable_diffusion/config/accelerate_config/deepspeed.yaml",
                 "--main_process_port", "29511",
                 "train.py",
-                "--dataset", "fusing/fill50k",
-                "--output-dir", "models",
-                "--use-8bit-adam",
+                //* logging
+                "--with-tracking",
+                "--report-to", "wandb",
+                //* data
+                "--dataset", "lambdalabs/pokemon-blip-captions",
+                "--data-dir", "data/dataset",
+                "--dataloader-num-workers", "8",
+                "--max-train-samples", "650",
+                "--max-val-samples", "80",
+                "--max-test-samples", "80",
+                //* checkpointing
+                "--model-dir", "data/pretrained",
+                "--output-dir", "model",
+                "--checkpointing-steps", "50", // save every 100 steps
+                //* model
+                "--groups", "2",
+                "--latent-channels", "4",
+                "--n-layers", "2",
+                //* training
+                "--train-batch-size", "2",
+                "--eval-batch-size", "2",
+                "--max-train-steps", "10000",
+                // "--max-train-epochs", "10",
+                "--log-interval", "50",
+                "--learning-rate", "0.001",
+                "--adam-weight-decay", "0.1",
+                "--lr-warmup-steps", "500",
+                //* ditributed
+                "--use-deepspeed",
+                "--use-8bit-adam",             
             ]
         }
     ]

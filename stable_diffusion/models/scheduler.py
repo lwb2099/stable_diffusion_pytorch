@@ -22,7 +22,7 @@ class DDPMConfig(BaseDataclass):
     beta_end: float = field(default=0.02, metadata={"help": "Ending value of beta."})
 
 
-class DDPMScheduler(nn.Module):
+class DDPMScheduler:
     @staticmethod
     def add_ddpm_args(parser):
         noise_group = parser.add_argument_group("ddpm")
@@ -51,7 +51,7 @@ class DDPMScheduler(nn.Module):
 
     def __init__(self, cfg):
         super().__init__()
-        self.noise_steps = cfg.noise_steps
+        self.noise_steps: int = cfg.noise_steps
         self.noise_time_steps: torch.Tensor[List[int]] = torch.arange(
             self.noise_steps, 0, -1
         )
@@ -97,7 +97,7 @@ class DDPMScheduler(nn.Module):
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ):
-        """
+        r"""
         sample x_t from q(x_t|x_0), where
         `q(x_t|x_0) = N(x_t; \sqrt{\bar\alpha_t} x_0, (1-\bar\alpha_t)I)`
 
@@ -107,13 +107,13 @@ class DDPMScheduler(nn.Module):
             - noise (torch.Tensor):
                   random noise, shape=`[batch, channels, height, width]`
             - timesteps (torch.Tensor):
-                  time step to add noise, shape=`[batch]`
+                  time step to add noise, shape=`[batch,]`
         Returns:
             - noised latent vector (torch.Tensor):
                     x_t, shape=`[batch, channels, height, width]`
         """
         assert (
-            timesteps < self.noise_steps
+            timesteps.max().item() < self.noise_steps
         ), f"timesteps({timesteps}) should be less than {self.noise_steps}"
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
         alphas_cumprod = self.alphas_cumprod.to(

@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 from tqdm import tqdm
 
 from stable_diffusion.models.autoencoder import AutoEncoderKL
@@ -7,7 +8,7 @@ from stable_diffusion.models.scheduler import DDPMScheduler
 from stable_diffusion.models.unet import UNetModel
 
 
-class LatentDiffusion:
+class LatentDiffusion(nn.Module):
     def __init__(
         self,
         unet: UNetModel,
@@ -21,35 +22,6 @@ class LatentDiffusion:
         self.autoencoder = autoencoder
         self.text_encoder = text_encoder
         self.noise_scheduler = noise_scheduler
-
-    def encode_text(self, text):
-        """Encode text to text embedding
-        Args:
-            - text (str):
-                  text to encode, shape = [batch, seq_len]
-        Returns:
-            - text_embedding (torch.Tensor):
-                  text embedding, shape = [batch, seq_len, d_model]
-        """
-        return self.text_encoder.encode(text)
-
-    def autoencoder_encode(self, x):
-        """
-        Encode image into latent vector
-        Args:
-            - x (torch.Tensor):
-                  image, shape = `[batch, channel, height, width]`
-        Returns:
-            - z (torch.Tensor):
-                  latent vector, shape = `[batch, d_model]`
-        """
-        return self.autoencoder.encode(x)
-
-    def autoencoder_decode(self, z):
-        """
-        decode latent vector to image
-        """
-        return self.autoencoder.decode(z)
 
     def pred_noise(
         self,
@@ -73,19 +45,16 @@ class LatentDiffusion:
             - pred noise (torch.Tensor):
                   predicted noise, shape = `[batch, channels, height, width]`
         """
-        do_classifier_free_guidance = guidance_scale == 1
-        bsz = noised_sample.shape[0]
+        do_classifier_free_guidance = guidance_scale > 1
         if not do_classifier_free_guidance:
-            return self.model(noised_sample, time_step, context_emb)
-        else:
-            t_in = torch.cat([time_step] * 2)
-            x_in = torch.cat([noised_sample] * 2)
-            uncond_emb = self.text_encoder.encode([""] * bsz)
-            c_in = torch.cat([uncond_emb, context_emb])
-            pred_noise_cond, pred_noise_uncond = self.model(x_in, t_in, c_in).chuck(2)
-            return pred_noise_cond + guidance_scale * (
-                pred_noise_cond - pred_noise_uncond
-            )
+            return self.unet(noised_sample, time_step, context_emb)
+        t_in = torch.cat([time_step] * 2)
+        x_in = torch.cat([noised_sample] * 2)
+        bsz = noised_sample.shape[0]
+        uncond_emb = self.text_encoder.encode([""] * bsz)
+        c_in = torch.cat([uncond_emb, context_emb])
+        pred_noise_cond, pred_noise_uncond = self.unet(x_in, t_in, c_in).chuck(2)
+        return pred_noise_cond + guidance_scale * (pred_noise_cond - pred_noise_uncond)
 
     def sample(
         self,

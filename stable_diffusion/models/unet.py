@@ -41,7 +41,8 @@ class UnetConfig(BaseDataclass):
         },
     )
     channels_list: List[int] = field(
-        default_factory=lambda: [64, 128], metadata={"help": "Channels at each level."}
+        default_factory=lambda: [128, 256],
+        metadata={"help": "Channels at each level."},
     )
     time_emb_dim: Optional[int] = field(
         default=None,
@@ -57,7 +58,7 @@ class UnetConfig(BaseDataclass):
 
 
 class UNetModel(nn.Module):
-    """
+    r"""
     The full `U-Net` model=`ε_θ(x_t, t, condition)` that takes noised latent x, time step and context condition, predicts the noise
 
     `U-Net` as several levels(total `len(channel_mult)`), each level is a `TimestepEmbSequential`,
@@ -166,6 +167,7 @@ class UNetModel(nn.Module):
     def __init__(
         self,
         latent_channels,
+        groups,
         cfg,  # unet config
     ):
         super().__init__()
@@ -179,6 +181,7 @@ class UNetModel(nn.Module):
         self.context_dim = cfg.context_dim
 
         # * 1. time emb
+        self.channels = channels_list[0]
         time_emb_dim = cfg.time_emb_dim or channels_list[0] * 4
         timestep_input_dim = channels_list[0]
         self.time_embedding = nn.Sequential(
@@ -187,7 +190,7 @@ class UNetModel(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim),
         )
         # * 2. conv in
-        self.conv_in = build_conv_in(latent_channels, channels_list[0])
+        self.conv_in = build_conv_in(latent_channels, self.channels)
         # num of levels
         levels = len(channels_list)
         # * 3. input blocks
@@ -198,40 +201,51 @@ class UNetModel(nn.Module):
             d_head,
             attn_mult,
         ) = build_input_blocks(
-            channels_list[0],
-            num_res_blocks,
-            attention_resolutions,
-            n_heads,
-            n_layers,
-            dropout,
-            context_dim,
-            levels,
-            time_emb_dim,
-            channels_list,
+            in_channels=self.channels,
+            num_res_blocks=num_res_blocks,
+            attention_resolutions=attention_resolutions,
+            n_heads=n_heads,
+            n_layers=n_layers,
+            dropout=dropout,
+            context_dim=context_dim,
+            levels=levels,
+            time_emb_dim=time_emb_dim,
+            channels_list=channels_list,
+            groups=groups,
         )
         # @ note: openai recalculated d_heads for attention in the bottoleneck, but that seems redundant(so as out_ch=ch and then ch=out_ch)
         # * 4. bottleneck
         # bottleneck has one resblock, then one attention block/spatial transformer, and then one resblock
         self.middle_block = build_bottleneck(
-            mid_ch, time_emb_dim, n_heads, d_head, n_layers, dropout, context_dim
+            in_ch=mid_ch,
+            time_emb_dim=time_emb_dim,
+            n_heads=n_heads,
+            d_head=d_head,
+            n_layers=n_layers,
+            dropout=dropout,
+            context_dim=context_dim,
+            groups=groups,
         )
         # * 5. output blocks
         self.output_blocks, out_ch = build_output_blocks(
-            num_res_blocks,
-            attention_resolutions,
-            n_heads,
-            n_layers,
-            dropout,
-            context_dim,
-            input_block_channels,
-            levels,
-            time_emb_dim,
-            channels_list,
-            mid_ch,
-            attn_mult,
+            num_res_blocks=num_res_blocks,
+            attention_resolutions=attention_resolutions,
+            n_heads=n_heads,
+            n_layers=n_layers,
+            dropout=dropout,
+            context_dim=context_dim,
+            input_block_channels=input_block_channels,
+            levels=levels,
+            time_emb_dim=time_emb_dim,
+            channels_list=channels_list,
+            in_ch=mid_ch,
+            attn_mult=attn_mult,
+            groups=groups,
         )
         # * 6. final output
-        self.out = build_final_output(out_ch, latent_channels)
+        self.out = build_final_output(
+            out_ch=out_ch, out_channels=latent_channels, groups=groups
+        )
 
     def time_proj(self, time_steps: torch.Tensor, max_len: int = 10000) -> torch.Tensor:
         """
@@ -247,10 +261,13 @@ class UNetModel(nn.Module):
             - torch.Tensor:
                   time embedding of shape `[batch, emb_dim]`
         """
-        return sinusoidal_time_proj(time_steps, channels, max_len)
+        return sinusoidal_time_proj(time_steps, self.channels, max_len)
 
     def forward(
-        self, x: torch.Tensor, timesteps: torch.Tensor, context_emb: torch.Tensor = None
+        self,
+        x: torch.Tensor,
+        timesteps: torch.Tensor,
+        context_emb: Optional[torch.Tensor] = None,
     ):
         """
         forward pass, predict noise given noised image x, time step and context
@@ -276,8 +293,8 @@ class UNetModel(nn.Module):
         # store input blocks for skip connection
         x_input_blocks = []
         # * Get time embedding
-        time_emb = self.time_proj(timesteps)
-        time_emb = self.time_emb(time_emb)
+        time_emb = self.time_proj(timesteps).to(x.dtype)
+        time_emb = self.time_embedding(time_emb)
         # * conv in layer
         x = self.conv_in(x)
         # * input blocks
@@ -292,33 +309,3 @@ class UNetModel(nn.Module):
             x = torch.cat([x, x_input_blocks.pop()], dim=1)
             x = module(x, time_emb, context_emb)
         return self.out(x)
-
-
-if __name__ == "__main__":
-    batch = 10
-    image_size = 64
-    in_channels = 3
-    channels = 128
-    out_channels = 3
-    tim_emb_dim = 512
-    seq_len = 77
-    context_dim = 768
-    x = np.random.randn(batch, in_channels, image_size, image_size)
-    x = torch.from_numpy(x).float()
-    timestep = torch.ones(size=(batch,))
-    # test U-Net
-    context = torch.ones((batch, seq_len, context_dim))
-    unet = UNetModel(
-        in_channels=in_channels,
-        out_channels=out_channels,
-        channels=channels,
-        num_res_blocks=2,
-        n_heads=4,
-        attention_resolutions=(1, 2),
-        channel_mult=[1, 2],
-        dropout=0.1,
-        n_layers=2,
-        context_dim=context_dim,
-    )
-    out = unet(x, timestep, context)
-    print(out.shape)

@@ -37,13 +37,14 @@ def build_input_blocks(
     in_channels: int,
     num_res_blocks: int,
     attention_resolutions: Optional[list] = None,
-    n_heads: Optional[int] = 1,
-    n_layers: Optional[int] = 1,
+    n_heads: int = 1,
+    n_layers: int = 1,
     dropout: float = 0.0,
     context_dim: Optional[int] = None,
     levels: int = 1,
     time_emb_dim: Optional[int] = None,
     channels_list: list = None,
+    groups: int = 4,
 ):
     input_blocks = nn.ModuleList([])
     # num of channels at each block
@@ -53,6 +54,7 @@ def build_input_blocks(
     in_ch = in_channels
     # @ note: in labmlai, they use level in attn_resolutions but in origin stable diffusion paper, they use ds = [1,2,4,...],total num levels
     attn_mult = 1
+    d_head = None
     for level in range(levels):
         for _ in range(num_res_blocks):
             # Residual block maps from previous number of channels to the number of
@@ -60,14 +62,17 @@ def build_input_blocks(
             out_ch = channels_list[level]
             layers = [
                 ResBlock(
-                    in_channels=in_ch, out_channels=out_ch, time_emb_dim=time_emb_dim
+                    in_channels=in_ch,
+                    out_channels=out_ch,
+                    time_emb_dim=time_emb_dim,
+                    groups=groups,
                 )
             ]
             in_ch = (
                 out_ch  # this level's output channels is next level's input channels
             )
             # * add attention layers
-            if attn_mult in attention_resolutions:
+            if attention_resolutions is not None and attn_mult in attention_resolutions:
                 d_head = in_ch // n_heads
                 layers.append(
                     SpatialTransformer(
@@ -77,6 +82,7 @@ def build_input_blocks(
                         n_layers=n_layers,
                         dropout=dropout,
                         context_dim=context_dim,
+                        groups=groups,
                     )
                 )
             input_blocks.append(TimestepEmbedSequential(*layers))
@@ -96,11 +102,12 @@ def build_bottleneck(
     in_ch: int,
     time_emb_dim: Optional[int] = None,
     n_heads: int = 1,
-    d_head: int = None,
-    n_layers: Optional[int] = 1,
+    d_head: int = 1,
+    n_layers: int = 1,
     dropout: float = 0.0,
     context_dim: Optional[int] = None,
     use_attn_only: bool = False,
+    groups: int = 4,
 ):
     return TimestepEmbedSequential(
         ResBlock(in_channels=in_ch, time_emb_dim=time_emb_dim, dropout=dropout),
@@ -116,17 +123,20 @@ def build_bottleneck(
                 n_layers=n_layers,
                 dropout=dropout,
                 context_dim=context_dim,
+                groups=groups,
             )
         ),
-        ResBlock(in_channels=in_ch, time_emb_dim=time_emb_dim, dropout=dropout),
+        ResBlock(
+            in_channels=in_ch, time_emb_dim=time_emb_dim, dropout=dropout, groups=groups
+        ),
     )
 
 
 def build_output_blocks(
     num_res_blocks: int,
     attention_resolutions: Optional[list] = None,
-    n_heads: Optional[int] = None,
-    n_layers: Optional[int] = None,
+    n_heads: int = 1,
+    n_layers: int = 1,
     dropout: float = 0.0,
     context_dim: Optional[int] = None,
     input_block_channels: Optional[ModuleList] = None,
@@ -135,11 +145,12 @@ def build_output_blocks(
     channels_list: list = None,
     in_ch: int = 1,
     attn_mult: Optional[int] = None,
+    groups: int = 4,
 ):
     output_blocks = nn.ModuleList([])
     for level in reversed(range(levels)):
         # * add resblocks
-        for _ in range(num_res_blocks + 1):
+        for res_block in range(num_res_blocks + 1):
             # Residual block maps from previous number of channels to the number of
             # channels in the current level
             # * note: here should add input_block_channels.pop() because input blocks are used as skip connection
@@ -152,11 +163,12 @@ def build_output_blocks(
                     out_channels=out_ch,
                     time_emb_dim=time_emb_dim,
                     dropout=dropout,
+                    groups=groups,
                 )
             ]
             in_ch = out_ch
             # * add attention layers
-            if attn_mult in attention_resolutions:
+            if attention_resolutions is not None and attn_mult in attention_resolutions:
                 d_head = in_ch // n_heads
                 layers.append(
                     SpatialTransformer(
@@ -166,20 +178,22 @@ def build_output_blocks(
                         n_layers=n_layers,
                         dropout=dropout,
                         context_dim=context_dim,
+                        groups=groups,
                     )
                 )
+
+            # *add UpSample except the last one, note that in reversed order, level==0 is the last
+            if level != 0 and res_block == num_res_blocks:
+                layers.append(TimestepEmbedSequential(UpSample(in_ch)))
+                if attn_mult:
+                    attn_mult //= 2
             output_blocks.append(TimestepEmbedSequential(*layers))
-        # *add UpSample except the last one, note that in reversed order, level==0 is the last
-        # @ note: both openai and labmlai use num_res_blocks here and placed it in the inner loop, this can be simply copied from upsample...
-        if level != 0:
-            output_blocks.append(TimestepEmbedSequential(UpSample(in_ch)))
-            attn_mult //= 2
         return output_blocks, in_ch
 
 
-def build_final_output(out_ch: int, out_channels: int):
+def build_final_output(out_ch: int, out_channels: int, groups: int = 4):
     return nn.Sequential(
-        nn.GroupNorm(32, out_ch),
+        nn.GroupNorm(groups, out_ch),
         nn.SiLU(),
         nn.Conv2d(
             in_channels=out_ch, out_channels=out_channels, kernel_size=3, padding=1

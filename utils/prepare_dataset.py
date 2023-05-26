@@ -3,6 +3,7 @@
 
 import os
 import random
+from typing import Optional
 import numpy as np
 import torch
 from torchvision import transforms
@@ -19,19 +20,29 @@ from stable_diffusion.dataclass import BaseDataclass
 class DatasetConfig(BaseDataclass):
     dataset: str = field(
         default="Norod78/simpsons-blip-captions",
-        metadata={"help": "Specify the dataset to use."},
+        metadata={"help": "name of the dataset to use."},
     )
     data_dir: str = field(
-        default="data", metadata={"help": "Specify the data directory path."}
+        default="data", metadata={"help": "Cache directory to store loaded dataset."}
     )
-    resolution: int = field(
-        default=64, metadata={"help": "Specify the resolution of the images."}
+    dataloader_num_workers: int = field(
+        default=4, metadata={"help": "number of workers for the dataloaders."}
     )
+    resolution: int = field(default=64, metadata={"help": "resolution of the images."})
     center_crop: bool = field(
-        default=True, metadata={"help": "Specify whether to apply center cropping."}
+        default=True, metadata={"help": "whether to apply center cropping."}
     )
     random_flip: bool = field(
-        default=True, metadata={"help": "Specify whether to apply random flipping."}
+        default=True, metadata={"help": "whether to apply random flipping."}
+    )
+    max_train_samples: Optional[int] = field(
+        default=None, metadata={"help": "max number of training samples to load."}
+    )
+    max_val_samples: Optional[int] = field(
+        default=None, metadata={"help": "max number of validation samples to load."}
+    )
+    max_test_samples: Optional[int] = field(
+        default=None, metadata={"help": "max number of test samples to load."}
     )
 
 
@@ -115,20 +126,62 @@ def get_dataset(
     args,
     split: str = "train",
     tokenizer: CLIPTokenizer = None,
+    logger=None,
 ):
     # check params
     assert tokenizer is not None, "you need to specify a tokenizer"
+
     assert split in {
         "train",
         "validation",
         "test",
     }, "split should be one of train, validation, test"
     # load dataset
+    # dataset = load_dataset(
+    #     args.dataset,
+    #     cache_dir=os.path.join(args.data_dir, args.dataset),
+    #     split=split,
+    # )
+
+    # if dataset is not splited into train, validation and test, manually split it
     dataset = load_dataset(
-        args.dataset_name,
-        cache_dir=os.path.join(args.cache_dir, args.dataset_name),
-        split=split,
-    )
+        args.dataset,
+        cache_dir=os.path.join(args.data_dir, args.dataset),
+    )["train"]
+
+    if args.max_train_samples is not None and split == "train":
+        if args.max_train_samples < len(dataset):
+            dataset = dataset.select(range(args.max_train_samples))
+        elif logger is not None:
+            logger.info(
+                f"max_train_samples({args.max_train_samples}) is larger than the number of train samples({len(dataset)})"
+            )
+    if args.max_val_samples is not None and split == "validation":
+        if args.max_val_samples < len(dataset):
+            dataset = dataset.select(
+                range(
+                    args.max_train_samples,
+                    args.max_train_samples + args.max_val_samples,
+                )
+            )
+        elif logger is not None:
+            logger.info(
+                f"max_val_samples({args.max_val_samples}) is larger than the number of val samples({len(dataset)})"
+            )
+    if args.max_test_samples is not None and split == "test":
+        if args.max_test_samples < len(dataset):
+            dataset = dataset.select(
+                range(
+                    args.max_train_samples + args.max_val_samples,
+                    args.max_train_samples
+                    + args.max_val_samples
+                    + args.max_test_samples,
+                )
+            )
+        elif logger is not None:
+            logger.info(
+                f"max_test_samples({args.max_test_samples}) is larger than the number of test samples({len(dataset)})"
+            )
 
     image_column = [col for col in ["image", "img"] if col in dataset.column_names][0]
     caption_colum = [col for col in ["text", "caption"] if col in dataset.column_names][
@@ -143,5 +196,10 @@ def get_dataset(
         examples["pixel_values"] = [transform(image) for image in images]
         examples["input_ids"] = tokenize_captions(examples[caption_colum], tokenizer)
         return examples
+
+    if logger is not None:
+        logger.info(
+            f"Loaded {len(dataset)} {split} samples from dataset:{args.dataset}"
+        )
 
     return dataset.with_transform(preprocess_train)

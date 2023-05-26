@@ -1,8 +1,11 @@
 # Data
-
+data/
 
 # ckpt
 models
+
+# logging
+wandb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

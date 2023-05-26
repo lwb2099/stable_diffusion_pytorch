@@ -8,6 +8,7 @@
 """
 
 from abc import abstractmethod
+from typing import Optional
 import torch
 import math
 from torch import nn
@@ -27,7 +28,10 @@ class TimestepBlock(nn.Module):
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     def forward(
-        self, x: torch.Tensor, time_emb: torch.Tensor, context: torch.Tensor = None
+        self,
+        x: torch.Tensor,
+        time_emb: Optional[torch.Tensor] = None,
+        context: Optional[torch.Tensor] = None,
     ):
         """
         forward pass of TimestepEmbeddingSequential

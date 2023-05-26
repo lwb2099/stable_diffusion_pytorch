@@ -12,7 +12,6 @@ from dataclasses import MISSING, fields
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 from omegaconf import DictConfig, OmegaConf
-from argparse_dataclass import ArgumentParser
 from stable_diffusion.dataclass import BaseDataclass
 from stable_diffusion.models.autoencoder import AutoencoderConfig
 from stable_diffusion.models.clip_model import ClipConfig
@@ -22,7 +21,6 @@ from stable_diffusion.models.unet import UnetConfig
 from trainer_args import (
     TrainConfig,
     OptimConfig,
-    LrSchedulerConfig,
 )
 from utils.checkpointing import CheckpointConfig
 from utils.prepare_dataset import DatasetConfig
@@ -265,7 +263,6 @@ def load_config(gen_args_fn=get_parser_from_dataclass):
     train_data_classes = [
         TrainConfig,
         OptimConfig,
-        LrSchedulerConfig,
         DatasetConfig,
         CheckpointConfig,
     ]

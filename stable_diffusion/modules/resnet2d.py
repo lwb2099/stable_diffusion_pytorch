@@ -153,12 +153,13 @@ class ResBlock(nn.Module):
         time_emb_dim: Optional[int] = None,
         dropout: Optional[int] = 0,
         padding: Optional[int] = 1,
+        groups: int = 4,
     ) -> None:
         super().__init__()
         # check parameters
         assert (
-            in_channels % 32 == 0
-        ), f"in_channels{in_channels} must be divisible by num_groups(32)"
+            in_channels % groups == 0
+        ), f"in_channels({in_channels}) must be divisible by num_groups({groups})"
         self.in_channels = in_channels
         # if has out_channels passed in, use it or use default = in_channels
         self.out_channels = out_channels or in_channels
@@ -166,7 +167,7 @@ class ResBlock(nn.Module):
         self.dropout = dropout
 
         self.in_layers = nn.Sequential(
-            nn.GroupNorm(num_groups=32, num_channels=in_channels),
+            nn.GroupNorm(num_groups=groups, num_channels=in_channels),
             nn.SiLU(),
             nn.Conv2d(
                 self.in_channels, self.out_channels, kernel_size=3, padding=padding
@@ -174,15 +175,15 @@ class ResBlock(nn.Module):
         )
         # Time embedding
         if self.time_emb_dim:
-            self.time_emb = nn.Sequential(
+            self.time_embedding = nn.Sequential(
                 nn.SiLU(),
                 nn.Linear(self.time_emb_dim, self.out_channels),
             )
         else:
-            self.time_emb = nn.Identity()
+            self.time_embedding = nn.Identity()
 
         self.out_layers = nn.Sequential(
-            nn.GroupNorm(num_groups=32, num_channels=self.out_channels),
+            nn.GroupNorm(num_groups=groups, num_channels=self.out_channels),
             nn.SiLU(),
             nn.Dropout(self.dropout),
             # ? openai model used zero_module(conv_nd)
@@ -202,7 +203,9 @@ class ResBlock(nn.Module):
         else:
             self.skip_connection = nn.Identity()
 
-    def forward(self, x: torch.Tensor, time_emb: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, time_emb: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         forward pass of ResBlock
 
@@ -216,7 +219,7 @@ class ResBlock(nn.Module):
             - torch.Tensor:
                   output shape = `[batch, out_channels, height, width]`
         """
-        if time_emb:
+        if time_emb is not None:
             assert (
                 x.shape[0] == time_emb.shape[0]
             ), f"batch size does not match: x.shape[0]({x.shape[0]}) != time_emb.shape[0]({time_emb.shape[0]})"
@@ -226,8 +229,8 @@ class ResBlock(nn.Module):
         # h: [batch, out_channels, height, width]
         h = self.in_layers(x)
         # [batch, time_emb_dim] => [batch, out_channels] => [batch, out_channels, 1, 1]
-        if time_emb:
-            time_emb = self.time_emb(time_emb)
+        if time_emb is not None:
+            time_emb = self.time_embedding(time_emb)
             h += time_emb[:, :, None, None]
         h = self.out_layers(h)
         return h + self.skip_connection(x)

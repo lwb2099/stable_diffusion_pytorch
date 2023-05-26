@@ -41,21 +41,21 @@ class CrossAttention(nn.Module):
     def __init__(
         self,
         query_dim: int,
-        context_dim: Optional[int],
-        n_heads: int,
-        d_head: int,
+        context_dim: Optional[int] = None,
+        n_heads: int = 1,
+        d_head: int = 1,
         dropout: float = 0.0,
     ):
         super().__init__()
         if not context_dim:
             context_dim = query_dim
-        d_attn = n_heads * d_head
+        d_model = n_heads * d_head
         self.n_heads = n_heads
         self.scale = 1 / (d_head**0.5)  # 1 / sqrt(d_k) from paper
-        self.to_q = nn.Linear(query_dim, d_attn, bias=False)
-        self.to_k = nn.Linear(context_dim, d_attn, bias=False)
-        self.to_v = nn.Linear(context_dim, d_attn, bias=False)
-        self.out = nn.Sequential(nn.Linear(d_attn, query_dim), nn.Dropout(dropout))
+        self.to_q = nn.Linear(query_dim, d_model, bias=False)
+        self.to_k = nn.Linear(context_dim, d_model, bias=False)
+        self.to_v = nn.Linear(context_dim, d_model, bias=False)
+        self.out = nn.Sequential(nn.Linear(d_model, query_dim), nn.Dropout(dropout))
 
     def forward(
         self,
@@ -71,7 +71,7 @@ class CrossAttention(nn.Module):
 
         Args:
             - query (torch.Tensor):
-                  feature map of shape `[batch, height*width, d_model]`
+                  feature map of shape `[batch, height*width, query_dim]`
                   height*width is equivalent to tgt_len in origin transformer
             - context_emb (torch.Tensor, optional):
                   conditional embeddings of shape `[batch, seq_len, context_dim]`. Default: `None`.
@@ -81,11 +81,16 @@ class CrossAttention(nn.Module):
                   actually never used...
         """
         # if no context_emb, equal to self-attention
+        # when use cross attn without wrapped spatial transformer, convert to [batch, height*width, d_model] first
+        convert = len(query.shape) == 4
+        if convert:
+            h = query.shape[2]
+            query = rearrange(query, "b c h w -> b (h w) c")
         if context_emb is None:
             context_emb = query
         Q, K, V = self.to_q(query), self.to_k(context_emb), self.to_v(context_emb)
-        # q: [batch, h*w, d_attn] -> [batch * n_head, h*w, d_head]
-        # k,v: [batch, seq_len, d_attn] -> [batch * n_head, seq_len, d_head]
+        # q: [batch, h*w, d_model] -> [batch * n_head, h*w, d_head]
+        # k,v: [batch, seq_len, d_model] -> [batch * n_head, seq_len, d_head]
         Q, K, V = map(
             lambda t: rearrange(
                 t, "b n (n_heads d_head) -> (b n_heads) n d_head", n_heads=self.n_heads
@@ -107,7 +112,11 @@ class CrossAttention(nn.Module):
         attn_v = rearrange(
             attn_v, "(b n_heads) n d_head -> b n (n_heads d_head)", n_heads=self.n_heads
         )
-        return self.out(attn_v)
+        out = self.out(attn_v)
+        # convert it back to [batch, channels, height, width]
+        if convert:
+            out = rearrange(out, "b (h w) c -> b c h w", h=h)
+        return out
 
 
 class FeedForward(nn.Module):
@@ -238,7 +247,7 @@ class BasicTransformerBlock(nn.Module):
         self.ffn = FeedForward(d_model, dropout=dropout)
         self.norm3 = nn.LayerNorm(d_model)
 
-    def forward(self, x: torch.Tensor, context_emb: torch.Tensor):
+    def forward(self, x: torch.Tensor, context_emb: Optional[torch.Tensor] = None):
         """
         forward pass of BasicTransformerBlock
 
@@ -246,7 +255,7 @@ class BasicTransformerBlock(nn.Module):
             - x (torch.Tensor):
                    input embeddings of shape `[batch_size, height * width, d_model]`
 
-            - context (torch.Tensor):
+            - context (torch.Tensor, optional):
                   conditional embeddings of shape `[batch_size,  seq_len, context_dim]`
 
         Returns:
@@ -257,9 +266,10 @@ class BasicTransformerBlock(nn.Module):
         assert (
             x.shape[-1] == self.d_model
         ), f"input dim {x.shape[-1]} should be equal to d_model {self.d_model}"
-        assert (
-            context_emb.shape[-1] == self.context_dim
-        ), f"context dim {context_emb.shape[-1]} should be equal to context_dim {self.context_dim}"
+        if context_emb is not None:
+            assert (
+                context_emb.shape[-1] == self.context_dim
+            ), f"context dim {context_emb.shape[-1]} should be equal to context_dim {self.context_dim}"
         # self attention
         x = self.norm1(x + self.self_attn(x, context_emb=None))
         # cross attention
@@ -302,15 +312,19 @@ class SpatialTransformer(nn.Module):
         n_layers: int = 1,
         dropout: float = 0.0,
         context_dim: int = None,
+        groups: int = 4,
     ):
         super().__init__()
         # check params
         assert (
-            in_channels % 32 == 0
-        ), f"in_channels {in_channels} should be divisible by 32 for GroupNorm"
+            n_heads > 0
+        ), f"n_heads({n_heads}) should be greater than 0 for SpatialTransformer"
+        assert (
+            in_channels % groups == 0
+        ), f"in_channels({in_channels}) should be divisible by num_groups({groups}) for GroupNorm"
         self.in_channels = in_channels
         self.context_dim = context_dim
-        self.norm = nn.GroupNorm(32, in_channels)
+        self.norm = nn.GroupNorm(groups, in_channels)
         self.proj_in = nn.Conv2d(in_channels, in_channels, kernel_size=1, padding=0)
         # Transformer layers
         # @ note: origin openai code use inner_dim = n_heads * d_head, but if legacy, d_head = in_channels // n_heads

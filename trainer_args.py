@@ -7,23 +7,36 @@ from stable_diffusion.dataclass import BaseDataclass
 @dataclass
 class TrainConfig(BaseDataclass):
     logging_dir: str = field(default="logs", metadata={"help": "log directory"})
-    tracker: Optional[str] = field(default=None, metadata={"help": "tracker argument"})
+    with_tracking: bool = field(
+        default=False, metadata={"help": "whether enable tracker"}
+    )
+    report_to: str = field(
+        default="wandb",
+        metadata={"help": "tracker to use, only enabled when passed in --with_tracker"},
+    )
     seed: int = field(default=0, metadata={"help": "seed argument"})
     train_batch_size: int = field(
-        default=1, metadata={"help": "train batch size argument"}
+        default=1, metadata={"help": "train batch size per processor"}
     )
     max_train_steps: int = field(
         default=1000,
         metadata={"help": "total train steps, if provided, overrides max_train_epochs"},
     )
-    max_train_epochs: int = field(
-        default=100, metadata={"help": "max train epochs, overrides max_train_steps"}
-    )
+    max_train_epochs: int = field(default=100, metadata={"help": "max train epochs"})
     eval_batch_size: int = field(
-        default=1, metadata={"help": "eval batch size argument"}
+        default=1, metadata={"help": "eval batch size per processor"}
+    )
+    log_interval: int = field(
+        default=0,
+        metadata={
+            "help": "do evaluation every n steps, default 0 means no evaluation during training"
+        },
     )
     gradient_accumulation_steps: int = field(
-        default=1, metadata={"help": "gradient accumulation steps argument"}
+        default=1, metadata={"help": "gradient accumulation steps"}
+    )
+    use_deepspeed: bool = field(
+        default=False, metadata={"help": "whether use deepspeed"}
     )
 
 
@@ -38,10 +51,9 @@ class OptimConfig(BaseDataclass):
     use_8bit_adam: bool = field(
         default=False, metadata={"help": "Use 8-bit Adam argument"}
     )
-
-
-@dataclass
-class LrSchedulerConfig(BaseDataclass):
+    max_grad_norm: float = field(
+        default=0.1, metadata={"help": "max grad norm argument"}
+    )
     scheduler_type: str = field(
         default="linear", metadata={"help": "scheduler type argument"}
     )
@@ -59,10 +71,11 @@ def add_distributed_training_args(parser):
         "--logging_dir", type=str, default="logs", help="log directory"
     )
     train_group.add_argument(
-        "--tracker",
+        "--with_tracker",
         type=str,
         default=None,
     )
+    train_group.add_argument("--report_to", type=int, default=0, help="seed argument")
     train_group.add_argument("--seed", type=int, default=0)
     train_group.add_argument(
         "--train_batch_size",
