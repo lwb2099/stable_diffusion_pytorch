@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@File    :   trainer_args.py
+@Time    :   2023/05/26 20:11:49
+@Author  :   Wenbo Li
+@Desc    :   Args for logging, training, optimizer, scheduler, etc.
+"""
+
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -66,7 +75,7 @@ class OptimConfig(BaseDataclass):
     )
 
 
-# deprecated, now we use dataclass
+# below are deprecated, now we use dataclass
 
 
 def add_distributed_training_args(parser):

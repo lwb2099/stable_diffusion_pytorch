@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@File    :   checkpointing_args.py
+@Time    :   2023/05/26 20:09:15
+@Author  :   Wenbo Li
+@Desc    :   dataclass to store arguments for ckpt management
+"""
+
 from dataclasses import dataclass, field
 from typing import Optional
 

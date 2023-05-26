@@ -50,6 +50,7 @@ class DDPMScheduler:
         return noise_group
 
     def __init__(self, cfg):
+        """modified from [labmlai - DDPMSampler](https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/diffusion/stable_diffusion/sampler/ddpm.py)"""
         super().__init__()
         self.noise_steps: int = cfg.noise_steps
         self.noise_time_steps: torch.Tensor[List[int]] = torch.arange(
@@ -100,6 +101,7 @@ class DDPMScheduler:
         r"""
         sample x_t from q(x_t|x_0), where
         `q(x_t|x_0) = N(x_t; \sqrt{\bar\alpha_t} x_0, (1-\bar\alpha_t)I)`
+        Modified from [Huggingface/Diffusers - scheduling_ddpm.py](https://github.com/huggingface/diffusers/blob/67cf0445ef48b1f913b90ce0025ac0c75673e32e/src/diffusers/schedulers/scheduling_ddpm.py#L419)
 
         Args:
             - original_samples (torch.Tensor):
@@ -148,6 +150,7 @@ class DDPMScheduler:
         """
         predict x_t from
         Sample 𝒙_{𝒕-1} from 𝒑_θ(𝒙_{𝒕-1} | 𝒙_𝒕) i.e. decode one step
+        Modified from [labmlai - DDPMSampler](https://github.com/labmlai/annotated_deep_learning_paper_implementations/blob/master/labml_nn/diffusion/stable_diffusion/sampler/ddpm.py)
 
         Args:
             - pred_noise (torch.Tensor):
@@ -214,31 +217,3 @@ class DDPMScheduler:
             x_prev,
             x0,
         )
-
-    # @torch.no_grad()
-    # def add_noise(
-    #     self, x0: torch.Tensor, time_step: int, noise: Optional[torch.Tensor] = None
-    # ):
-    #     """
-    #     add noise on x_t_1 to get x_t, i.e. sample from q(x_t | x_t_1)
-
-    #     Args:
-    #         - x0 (torch.Tensor):
-    #               origin latent vector, shape=`[batch, channels, height, width]`
-    #         - time_step (int):
-    #               time step to add noise on
-    #         - noise (Optional[torch.Tensor], optional):
-    #               random noise, shape=`[batch, channels, height, width]`. Default: `None`.
-
-    #     Returns:
-    #         - noised latent (torch.Tensor):
-    #               x_t, shape=`[batch, channels, height, width]`
-    #     """
-    #     # Random noise, if noise is not specified
-    #     if noise is None:
-    #         noise = torch.randn_like(x0)
-    #     # Sample from $\mathcal{N} \Big(x_t; \sqrt{\bar\alpha_t} x_0, (1-\bar\alpha_t) \mathbf{I} \Big)$
-    #     return (
-    #         self.sqrt_alpha_bar[time_step] * x0
-    #         + self.sqrt_1m_alpha_bar[time_step] * noise
-    #     )

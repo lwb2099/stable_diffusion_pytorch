@@ -4,7 +4,7 @@
 @File    :   parse_args.py
 @Time    :   2023/05/25 10:46:53
 @Author  :   Wenbo Li
-@Desc    :   convert dataclass into argparse and group
+@Desc    :   convert dataclass into argparse and group, copied a lot from fairseq
 """
 
 import argparse

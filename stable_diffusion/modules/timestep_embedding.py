@@ -46,8 +46,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
             - time_emb (Tensor):
                   input shape=[batch, time_emb_dim]
             - context (Tensor, optional):
-            #TODO: figure out shape
-                  input shape=[]. Default: None.
+                  input shape=[batch, seq_len, context_dim]. Default: None.
 
         Returns:
             - Tensor:
@@ -81,7 +80,7 @@ def sinusoidal_time_proj(
         - time_steps (torch.Tensor):
                 time step of shape [batch_size,]
         - emb_dim (int):
-                embed dimension of shape [batch,]
+                embed dimension
         - max_len (int, optional):
                 max len of embedding. Default: 10000.
 

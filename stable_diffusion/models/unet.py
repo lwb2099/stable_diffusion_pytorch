@@ -90,8 +90,6 @@ class UNetModel(nn.Module):
                 number of channels in the input feature map
         - out_channels (int):
                 number of channels in the output feature map
-        - channels (int):
-                base channel count for the model
         - num_res_blocks (int):
                 number of residual blocks at each level
         - n_heads (int):
@@ -99,9 +97,8 @@ class UNetModel(nn.Module):
         - attention_resolutions (List[int]):
                 at which level should attention be performed.
                 e.g. [1, 2] means attention is performed at level 1 and 2.
-        - channel_mult (List[int]):
-                channel multiplier for each level of the UNet.
-                e.g. [1, 2, 4] means the first level has 1*channel, second level has 2*channel, third level has 4*channel.
+        - channels_list (List[int]):
+                channels for each level of the UNet.
         - dropout (float, optional):
                 dropout rate. Default: `0`.
         - n_layers (int, optional):
@@ -214,6 +211,7 @@ class UNetModel(nn.Module):
             groups=groups,
         )
         # @ note: openai recalculated d_heads for attention in the bottoleneck, but that seems redundant(so as out_ch=ch and then ch=out_ch)
+        # see origin code: https://github.com/CompVis/stable-diffusion/blob/21f890f9da3cfbeaba8e2ac3c425ee9e998d5229/ldm/modules/diffusionmodules/openaimodel.py#L443
         # * 4. bottleneck
         # bottleneck has one resblock, then one attention block/spatial transformer, and then one resblock
         self.middle_block = build_bottleneck(
@@ -282,7 +280,7 @@ class UNetModel(nn.Module):
 
         Returns:
             - torch.Tensor:
-                  output feature map of shape `[batch_size, channels, width, height]`
+                  output latent of shape `[batch_size, channels, width, height]`
         """
         # check parameters
         if context_emb is not None:

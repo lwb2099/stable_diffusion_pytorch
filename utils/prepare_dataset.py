@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 # -*- encoding: utf-8 -*-
+"""
+@File    :   prepare_dataset.py
+@Time    :   2023/05/26 20:07:10
+@Author  :   Wenbo Li
+@Desc    :   code for loading and transform txt2img dataset
+"""
 
 import os
 import random

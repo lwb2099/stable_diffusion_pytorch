@@ -1,3 +1,13 @@
+#!/usr/bin/env python
+# -*- encoding: utf-8 -*-
+"""
+@File    :   dataclass.py
+@Time    :   2023/05/26 20:09:51
+@Author  :   Wenbo Li
+@Desc    :   Base dataclass copied from fairseq, Configs inherit from this class so that fairseq script can better convert dataclass into argparse
+"""
+
+
 from dataclasses import _MISSING_TYPE, dataclass
 from typing import List, Any, Optional
 

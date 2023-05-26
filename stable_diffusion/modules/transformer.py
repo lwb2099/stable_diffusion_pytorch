@@ -259,7 +259,7 @@ class BasicTransformerBlock(nn.Module):
                   conditional embeddings of shape `[batch_size,  seq_len, context_dim]`
 
         Returns:
-            - _type_:
+            - torch.Tensor:
                   x with attention and skip connection and normalization, shape=`[batch_size, height * width, d_model]`
         """
         # check params
@@ -290,18 +290,20 @@ class SpatialTransformer(nn.Module):
         - proj_out = Conv2d
 
     Args:
-    - in_channels (int):
-        input num of channels in the feature map
-    - n_heads (int):
-        num of attention heads
-    - d_head (int):
-        dim of each head
-    - n_layer (int, optional):
-        num of transformer block. Default: `1`.
-    - dropout (float, optional):
-        dropout rate. Default: `0.`.
-    - context_dim (int, optional):
-        dim of context condition. Default: `None`.
+        - in_channels (int):
+            input num of channels in the feature map
+        - n_heads (int):
+            num of attention heads
+        - d_head (int):
+            dim of each head
+        - n_layer (int, optional):
+            num of transformer block. Default: `1`.
+        - dropout (float, optional):
+            dropout rate. Default: `0.`.
+        - context_dim (int, optional):
+            dim of context condition. Default: `None`.
+        - groups (int, optional):
+            num of groups for GroupNorm. Default: `2`.
     """
 
     def __init__(
@@ -312,7 +314,7 @@ class SpatialTransformer(nn.Module):
         n_layers: int = 1,
         dropout: float = 0.0,
         context_dim: int = None,
-        groups: int = 4,
+        groups: int = 2,
     ):
         super().__init__()
         # check params

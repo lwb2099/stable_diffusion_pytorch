@@ -15,8 +15,7 @@ import torch.nn as nn
 from torch.nn import ModuleList
 from ..modules.timestep_embedding import TimestepEmbedSequential
 from ..modules.resnet2d import DownSample, ResBlock, UpSample
-import os
-from huggingface_hub import snapshot_download
+
 from ..modules.transformer import SpatialTransformer, CrossAttention
 
 

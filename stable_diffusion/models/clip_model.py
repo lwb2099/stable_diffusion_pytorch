@@ -57,7 +57,6 @@ class CLIPModel(nn.Module):
         self,
         cfg,
     ):
-        """main class"""
         super().__init__()
         self.max_seq_len = cfg.max_seq_len
         self.text_encoder: CLIPTextModel = CLIPTextModel.from_pretrained(

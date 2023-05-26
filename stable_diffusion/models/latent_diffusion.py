@@ -31,7 +31,7 @@ class LatentDiffusion(nn.Module):
         guidance_scale: float = 1.0,
     ):
         """
-        forward pass that predicts the noise added on latent vector at time step=t
+        predicts the noise added on latent vector at time step=t
 
         Args:
             - x (torch.Tensor):
@@ -91,7 +91,9 @@ class LatentDiffusion(nn.Module):
         # Time steps to sample at $T - t', T - t' - 1, \dots, 1$
 
         # Sampling loop
-        progress_bar = tqdm(time_steps, desc="Sampling")
+        progress_bar = tqdm(
+            reversed(self.noise_scheduler.noise_time_steps), desc="Sampling"
+        )
         for step in progress_bar:
             # fill time step t from int to tensor of shape=`[batch]`
             time_step = x.new_full((bsz,), step, dtype=torch.long)

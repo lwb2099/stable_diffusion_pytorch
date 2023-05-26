@@ -144,6 +144,8 @@ class ResBlock(nn.Module):
               dropout rate. Default: `0.`
         - padding (int, optional):
               padding idx. Default: `1`.
+        - groups (int, optional):
+              num of groups for `GroupNorm`. Default: `2`.
     """
 
     def __init__(
@@ -153,7 +155,7 @@ class ResBlock(nn.Module):
         time_emb_dim: Optional[int] = None,
         dropout: Optional[int] = 0,
         padding: Optional[int] = 1,
-        groups: int = 4,
+        groups: int = 2,
     ) -> None:
         super().__init__()
         # check parameters
