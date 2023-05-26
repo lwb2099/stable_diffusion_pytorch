@@ -377,7 +377,10 @@ class StableDiffusionTrainer:
                     )
                     model.eval()
                     losses = []
-                    eval_bar = tqdm(self.eval_dataloader)
+                    eval_bar = tqdm(
+                        self.eval_dataloader,
+                        disable=not self.accelerator.is_main_process,
+                    )
                     for step, batch in enumerate(eval_bar):
                         with torch.no_grad():
                             loss = self.__one_step(batch)
