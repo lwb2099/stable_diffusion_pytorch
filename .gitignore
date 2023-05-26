@@ -1,8 +1,8 @@
 # Data
-data/
+data/*
 
 # ckpt
-models
+model/*
 
 # logging
 wandb
