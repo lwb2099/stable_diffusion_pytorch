@@ -100,7 +100,7 @@ class StableDiffusionTrainer:
                 args,
                 init_kwargs={
                     "wandb": {
-                        "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())},",
+                        "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}",
                         "tags": ["stable diffusion", "pytorch"],
                         "entity": "liwenbo2099",
                     }
@@ -242,7 +242,7 @@ class StableDiffusionTrainer:
         else:
             self.accelerator.print(f"Resuming from checkpoint {ckpt_path}")
             self.accelerator.load_state(os.path.join(ckpt_args.output_dir, ckpt_path))
-        return ckpt_path
+        self.ckpt_path = ckpt_path
 
     def __resume_train_state(self, train_args, ckpt_path):
         """
@@ -276,8 +276,8 @@ class StableDiffusionTrainer:
 
     def train(self):
         # * 7. Resume training state and ckpt
-        ckpt_path = self.__resume_from_ckpt(args.checkpoint)
-        self.__resume_train_state(args.train, ckpt_path)
+        self.__resume_from_ckpt(args.checkpoint)
+        self.__resume_train_state(args.train, self.ckpt_path)
         # self.model.autoencoder.requires_grad_(False)
         self.model.text_encoder.requires_grad_(False)
         total_batch_size = (
@@ -308,8 +308,8 @@ class StableDiffusionTrainer:
             for step, batch in enumerate(self.train_dataloader):
                 # * Skip steps until we reach the resumed step
                 if (
-                    args.checkpoint.resume_from_checkpoint
-                    and epoch == self.first_epoch
+                    self.ckpt_path is not None
+                    and epoch == self.start_epoch
                     and step < self.resume_step
                 ):
                     if step % args.train.gradient_accumulation_steps == 0:
@@ -345,7 +345,6 @@ class StableDiffusionTrainer:
                     if (
                         isinstance(self.checkpointing_steps, int)
                         and self.global_step % self.checkpointing_steps == 0
-                        and self.accelerator.is_main_process
                     ):
                         save_path = os.path.join(
                             args.checkpoint.output_dir,
