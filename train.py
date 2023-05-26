@@ -103,6 +103,8 @@ class StableDiffusionTrainer:
                         "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}",
                         "tags": ["stable diffusion", "pytorch"],
                         "entity": "liwenbo2099",
+                        "resume": True,
+                        "save_code": True,
                     }
                 },
             )
@@ -298,8 +300,10 @@ class StableDiffusionTrainer:
         logger.info(f"Resume from epoch={self.start_epoch}, step={self.resume_step}")
         logger.info("**********************************************")
         self.progress_bar = tqdm(
-            range(self.resume_step, args.train.max_train_steps),
+            range(self.global_step, args.train.max_train_steps),
+            total=args.train.max_train_steps,
             disable=not self.accelerator.is_main_process,
+            initial=self.global_step,  # @note: huggingface seemed to missed this, should first update to global step
             desc="Step",
         )
         self.model.train()
@@ -313,6 +317,8 @@ class StableDiffusionTrainer:
                     and step < self.resume_step
                 ):
                     if step % args.train.gradient_accumulation_steps == 0:
+                        # @note: huggingface seemed to missed this, global step should also be updated
+                        self.global_step += 1
                         self.progress_bar.update(1)
                     continue
                 with self.accelerator.accumulate(self.model.unet):
