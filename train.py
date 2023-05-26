@@ -21,8 +21,8 @@ from accelerate.utils import (
     DummyScheduler,
     DeepSpeedPlugin,
 )
+from transformers import get_scheduler
 import logging
-from diffusers.optimization import get_scheduler
 from stable_diffusion.models.latent_diffusion import LatentDiffusion
 from utils.model_utils import build_models
 from utils.parse_args import load_config
@@ -34,6 +34,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 
 # build environment
+os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 os.environ["TORCH_SHOW_CPP_STACKTRACES"] = "1"
@@ -65,13 +66,12 @@ class StableDiffusionTrainer:
         self.eval_dataset: Dataset = eval_dataset
         # * 1. init accelerator
         accelerator_log_kwargs = {}
-
-        if args.train.with_tracking:
+        if args.log.with_tracking:
             try:
-                accelerator_log_kwargs["log_with"] = args.train.report_to
+                accelerator_log_kwargs["log_with"] = args.log.report_to
             except AttributeError:
                 print("need to specify report_to when passing in with_tracking=True")
-            accelerator_log_kwargs["logging_dir"] = args.train.logging_dir
+            accelerator_log_kwargs["logging_dir"] = args.log.logging_dir
 
         accelerator_project_config = ProjectConfiguration()
         self.accelerator = Accelerator(
@@ -88,8 +88,8 @@ class StableDiffusionTrainer:
             if args.train.use_deepspeed is True
             else None,
         )
-        if args.train.with_tracking:
-            if args.train.report_to != "wandb":
+        if args.log.with_tracking:
+            if args.log.report_to != "wandb":
                 raise NotImplementedError(
                     "Currently only support wandb, init trakcer for your platforms"
                 )
@@ -119,13 +119,15 @@ class StableDiffusionTrainer:
             dataset=self.train_dataset,
             collate_fn=collate_fn,
             batch_size=args.train.train_batch_size,
-            num_workers=args.dataset.dataloader_num_workers or self.accelerator.num_processes,
+            num_workers=args.dataset.dataloader_num_workers
+            or self.accelerator.num_processes,
         )
         self.eval_dataloader = self.get_dataloader(
             dataset=self.eval_dataset,
             collate_fn=collate_fn,
             batch_size=args.train.eval_batch_size,
-            num_workers=args.dataset.dataloader_num_workers or self.accelerator.num_processes,
+            num_workers=args.dataset.dataloader_num_workers
+            or self.accelerator.num_processes,
         )
 
         # * 5. Prepare everything with our `accelerator`.
@@ -335,21 +337,22 @@ class StableDiffusionTrainer:
                 if self.accelerator.sync_gradients:
                     self.progress_bar.update(1)
                     self.global_step += 1
-                    if self.args.train.with_tracking:
+                    if self.args.log.with_tracking:
                         self.accelerator.log(
                             {"train_loss": train_loss}, step=self.global_step
                         )
                     train_loss = 0.0
-                if (
-                    self.accelerator.is_main_process
-                    and isinstance(self.checkpointing_steps, int)
-                    and self.global_step % self.checkpointing_steps == 0
-                ):
-                    save_path = os.path.join(
-                        args.checkpoint.output_dir, f"checkpoint-{self.global_step}"
-                    )
-                    self.accelerator.save_state(save_path)
-                    logger.info(f"Saved state to {save_path}")
+                    if (
+                        isinstance(self.checkpointing_steps, int)
+                        and self.global_step % self.checkpointing_steps == 0
+                        and self.accelerator.is_main_process
+                    ):
+                        save_path = os.path.join(
+                            args.checkpoint.output_dir,
+                            f"checkpoint-{self.global_step}",
+                        )
+                        self.accelerator.save_state(save_path)
+                        logger.info(f"Saved state to {save_path}")
 
                 logs = {
                     "loss": loss.detach().item(),
@@ -365,7 +368,7 @@ class StableDiffusionTrainer:
                     and self.global_step % args.train.log_interval == 0
                 ):
                     logger.info(
-                        f"Evaluate on val dataset [len: {len(self.eval_dataset)}]"
+                        f"Evaluate on eval dataset [len: {len(self.eval_dataset)}]"
                     )
                     model.eval()
                     losses = []
@@ -383,7 +386,7 @@ class StableDiffusionTrainer:
                     logger.info(
                         f"global step {self.global_step}: eval_loss: {eval_loss}"
                     )
-                    if args.train.with_tracking:
+                    if args.log.with_tracking:
                         self.accelerator.log(
                             {
                                 "eval_loss": eval_loss,
@@ -397,11 +400,12 @@ class StableDiffusionTrainer:
                 output_dir = f"epoch_{epoch}"
                 if args.checkpoint.output_dir is not None:
                     output_dir = os.path.join(args.output_dir, output_dir)
-                self.accelerator.save_state(output_dir)
                 logger.info(f"Saved state to {output_dir}")
+                self.accelerator.save_state(output_dir)
+
         # end training
         self.accelerator.wait_for_everyone()
-        if self.args.train.with_tracking:
+        if self.args.log.with_tracking:
             self.accelerator.end_training()
 
         if self.accelerator.is_main_process:
@@ -447,11 +451,6 @@ class StableDiffusionTrainer:
         # * 5. predict noise
         pred_noise = self.model.pred_noise(x_t, timesteps, text_condition)
         return F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
-
-    def save_model(
-        self,
-    ):
-        pass
 
 
 if __name__ == "__main__":

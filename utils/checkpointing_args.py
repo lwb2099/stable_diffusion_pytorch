@@ -1,4 +1,4 @@
-from dataclasses import MISSING, dataclass, field
+from dataclasses import dataclass, field
 from typing import Optional
 
 from stable_diffusion.dataclass import BaseDataclass

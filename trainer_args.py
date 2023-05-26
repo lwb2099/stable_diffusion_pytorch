@@ -5,7 +5,7 @@ from stable_diffusion.dataclass import BaseDataclass
 
 
 @dataclass
-class TrainConfig(BaseDataclass):
+class LogConfig(BaseDataclass):
     logging_dir: str = field(default="logs", metadata={"help": "log directory"})
     with_tracking: bool = field(
         default=False, metadata={"help": "whether enable tracker"}
@@ -14,6 +14,10 @@ class TrainConfig(BaseDataclass):
         default="wandb",
         metadata={"help": "tracker to use, only enabled when passed in --with_tracker"},
     )
+
+
+@dataclass
+class TrainConfig(BaseDataclass):
     seed: int = field(default=0, metadata={"help": "seed argument"})
     train_batch_size: int = field(
         default=1, metadata={"help": "train batch size per processor"}

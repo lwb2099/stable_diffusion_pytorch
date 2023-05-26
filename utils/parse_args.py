@@ -19,10 +19,11 @@ from stable_diffusion.models.scheduler import DDPMConfig
 from stable_diffusion.models.unet import UnetConfig
 
 from trainer_args import (
+    LogConfig,
     TrainConfig,
     OptimConfig,
 )
-from utils.checkpointing import CheckpointConfig
+from utils.checkpointing_args import CheckpointConfig
 from utils.prepare_dataset import DatasetConfig
 import re, ast, inspect
 
@@ -261,6 +262,7 @@ def get_parser_from_dataclass(
 def load_config(gen_args_fn=get_parser_from_dataclass):
     # train data classes
     train_data_classes = [
+        LogConfig,
         TrainConfig,
         OptimConfig,
         DatasetConfig,
