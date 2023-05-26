@@ -41,7 +41,7 @@ class UnetConfig(BaseDataclass):
         },
     )
     channels_list: List[int] = field(
-        default_factory=lambda: [128, 256],
+        default_factory=lambda: [32, 64],
         metadata={"help": "Channels at each level."},
     )
     time_emb_dim: Optional[int] = field(

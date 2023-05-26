@@ -34,7 +34,7 @@ class AutoencoderConfig(BaseDataclass):
         },
     )
     autoencoder_channels_list: List[int] = field(
-        default_factory=lambda: [64, 128],
+        default_factory=lambda: [32, 64],
         metadata={
             "help": "Comma-separated list of channel multipliers for each level."
         },
@@ -42,7 +42,7 @@ class AutoencoderConfig(BaseDataclass):
     autoencoder_num_res_blocks: int = field(
         default=2, metadata={"help": "Number of residual blocks per level."}
     )
-    groups: int = field(default=4, metadata={"help": "Number of groups for GroupNorm."})
+    groups: int = field(default=2, metadata={"help": "Number of groups for GroupNorm."})
 
 
 class AutoEncoderKL(nn.Module):

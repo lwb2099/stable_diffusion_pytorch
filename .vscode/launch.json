@@ -36,21 +36,21 @@
                 // unet:
                 "--num-res-blocks", "2",
                 "--attention-resolutions", "1,2",
-                "--channels-list", "64,128",
+                "--channels-list", "32,64",
                 "--time-emb-dim", "128",
                 "--dropout", "0.1",
                 "--n-layers", "2",
-                "--context-dim", "768",
+                "--context-dim", "768", // match CLIP madel
                 // autoencoder
                 "--in-channels","3",
                 "--latent-channels", "4",
                 "--out-channels", "3",
-                "--autoencoder-channels-list", "64,128",
+                "--autoencoder-channels-list", "32,64",
                 "--groups", "2",
                 "--autoencoder-num-res-blocks", "2",
                 // scheduler
                 "--noise-schedule", "linear",
-                "--noise-steps", "1000",
+                "--noise-steps", "200",
                 "--beta-start", "0.0001",
                 "--beta-end", "0.02",
                 // clip
@@ -59,8 +59,8 @@
                 "--max-seq-len", "77",
                 "--model-dir", "data/pretrained",
                 //* training
-                "--train-batch-size", "2",
-                "--eval-batch-size", "2",
+                "--train-batch-size", "4",
+                "--eval-batch-size", "4",
                 "--max-train-steps", "1000",
                 // "--max-train-epochs", "10",
                 "--log-interval", "50",
