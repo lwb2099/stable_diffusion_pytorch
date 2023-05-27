@@ -64,6 +64,7 @@
                 "--train-batch-size", "16",
                 "--eval-batch-size", "16",
                 "--max-train-steps", "5000",
+                "--guidance-scale", "7.5",
                 // "--max-train-epochs", "10",
                 "--log-interval", "50",
                 "--learning-rate", "0.001",

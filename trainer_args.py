@@ -51,6 +51,9 @@ class TrainConfig(BaseDataclass):
     use_deepspeed: bool = field(
         default=False, metadata={"help": "whether use deepspeed"}
     )
+    guidance_scale: float = field(
+        default=7.5, metadata={"help": "guidance scale for classifier free guidance"}
+    )
 
 
 @dataclass
