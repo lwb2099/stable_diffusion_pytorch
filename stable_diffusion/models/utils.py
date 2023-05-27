@@ -187,7 +187,7 @@ def build_output_blocks(
                 if attn_mult:
                     attn_mult //= 2
             output_blocks.append(TimestepEmbedSequential(*layers))
-        return output_blocks, in_ch
+    return output_blocks, in_ch
 
 
 def build_final_output(out_ch: int, out_channels: int, groups: int = 4):
