@@ -1,10 +1,7 @@
-diffusers
-torch
+torch==2.0.0
 torchvision
 datasets
 accelerate
 omegaconf
 einops
-xformers
-bitsandbytes
 transformers
