@@ -23,6 +23,9 @@ class LogConfig(BaseDataclass):
         default="wandb",
         metadata={"help": "tracker to use, only enabled when passed in --with_tracker"},
     )
+    resume: bool = field(
+        default=False, metadata={"help": "whether resume from last run"}
+    )
 
 
 @dataclass

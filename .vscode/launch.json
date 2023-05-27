@@ -16,28 +16,28 @@
                 "--main_process_port", "29511",
                 "train.py",
                 //* logging
-                // "--with-tracking",
-                // "--report-to", "wandb",
-                "--seed", "42",
+                "--with-tracking",
+                "--report-to", "wandb",
+                // "resume",
                 //* data
                 "--dataset", "poloclub/diffusiondb",
-                "--subset", "2m_first_100k",
+                "--subset", "2m_first_10k",
                 "--data-dir", "data/dataset",
-                "--resolution", "256", 
+                "--resolution", "64", 
                 "--random-flip",
-                "--max-train-samples", "90000",
-                "--max-val-samples", "5000",
-                "--max-test-samples", "5000",
+                "--max-train-samples", "9000",
+                "--max-val-samples", "500",
+                "--max-test-samples", "500",
                 // "--dataloader-num-workers", "4",
                 //* checkpointing
                 "--model-dir", "data/pretrained",
                 "--output-dir", "model",
-                "--checkpointing-steps", "50", // save every 100 steps
+                "--checkpointing-steps", "100", // save every 100 steps
                 //* model
                 // unet:
                 "--num-res-blocks", "2",
                 "--n-heads", "8",
-                "--attention-resolutions", "0,1,2",
+                "--attention-resolutions", "0,1",
                 "--channels-list", "160,320",  // "160,320,640,640",
                 "--time-emb-dim", "512",
                 "--dropout", "0.1",
@@ -47,7 +47,7 @@
                 "--in-channels","3",
                 "--latent-channels", "4",
                 "--out-channels", "3",
-                "--autoencoder-channels-list", "128,256",
+                "--autoencoder-channels-list", "64,128",
                 "--groups", "32",
                 "--autoencoder-num-res-blocks", "2",
                 // scheduler
@@ -61,13 +61,14 @@
                 "--max-seq-len", "77",
                 "--model-dir", "data/pretrained",
                 //* training
+                "--seed", "42",
                 "--train-batch-size", "8",
                 "--eval-batch-size", "8",
-                "--max-train-steps", "5000",
+                "--max-train-steps", "20000",
                 "--guidance-scale", "7.5",
                 // "--max-train-epochs", "10",
-                "--log-interval", "50",
-                "--learning-rate", "0.001",
+                "--log-interval", "100",
+                "--learning-rate", "0.0001",
                 "--adam-weight-decay", "0.1",
                 "--lr-warmup-steps", "500",
                 // ditributed
