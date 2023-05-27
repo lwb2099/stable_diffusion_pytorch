@@ -21,13 +21,13 @@
                 "--seed", "42",
                 //* data
                 "--dataset", "poloclub/diffusiondb",
-                "--subset", "2m_first_10k",
+                "--subset", "2m_first_100k",
                 "--data-dir", "data/dataset",
                 "--resolution", "64", 
                 "--random-flip",
-                "--max-train-samples", "9000",
-                "--max-val-samples", "500",
-                "--max-test-samples", "500",
+                "--max-train-samples", "90000",
+                "--max-val-samples", "5000",
+                "--max-test-samples", "5000",
                 // "--dataloader-num-workers", "4",
                 //* checkpointing
                 "--model-dir", "data/pretrained",
