@@ -34,7 +34,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 
 # build environment
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 os.environ["TORCH_SHOW_CPP_STACKTRACES"] = "1"
@@ -74,6 +74,15 @@ class StableDiffusionTrainer:
             accelerator_log_kwargs["logging_dir"] = args.log.logging_dir
 
         accelerator_project_config = ProjectConfiguration()
+        # check deepspeed
+        if args.train.use_deepspeed is True:
+            try:
+                import deepspeed
+            except ImportError as e:
+                raise ImportError(
+                    "You passed use_deepspeed=True, please install deepspeed by running `pip install deepspeed`"
+                ) from e
+
         self.accelerator = Accelerator(
             gradient_accumulation_steps=args.train.gradient_accumulation_steps,
             **accelerator_log_kwargs,
@@ -93,7 +102,12 @@ class StableDiffusionTrainer:
                 raise NotImplementedError(
                     "Currently only support wandb, init trakcer for your platforms"
                 )
-            import wandb
+            try:
+                import wandb
+            except ImportError as e:
+                raise ImportError(
+                    "You passed with_tracking and report_to `wandb`, please install wandb by running `pip install wandb`"
+                ) from e
 
             self.accelerator.init_trackers(
                 "stable_diffusion_pytorch",
