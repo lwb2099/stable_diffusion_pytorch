@@ -14,12 +14,12 @@ from huggingface_hub import snapshot_download
 load_dataset(
     "poloclub/diffusiondb",
     "2m_first_100k",
-    cache_dir=os.path.join("data/datasets", "poloclub/diffusiondb"),
+    cache_dir=os.path.join("data/dataset", "poloclub/diffusiondb"),
 )
 
 snapshot_download(
     "poloclub/diffusiondb",
     "2m_first_100k",
     repo_type="dataset",
-    local_dir=os.path.join("data/datasets", "poloclub/diffusiondb"),
+    local_dir=os.path.join("data/dataset", "poloclub/diffusiondb"),
 )
