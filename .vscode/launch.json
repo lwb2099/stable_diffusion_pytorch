@@ -38,7 +38,7 @@
                 "--num-res-blocks", "2",
                 "--n-heads", "8",
                 "--attention-resolutions", "0,1,2",
-                "--channels-list", "160,320,640,640",
+                "--channels-list", "160,320",  // "160,320,640,640",
                 "--time-emb-dim", "512",
                 "--dropout", "0.1",
                 "--n-layers", "2",
@@ -47,7 +47,7 @@
                 "--in-channels","3",
                 "--latent-channels", "4",
                 "--out-channels", "3",
-                "--autoencoder-channels-list", "64,128,256,256",
+                "--autoencoder-channels-list", "128,256",
                 "--groups", "32",
                 "--autoencoder-num-res-blocks", "2",
                 // scheduler
@@ -61,8 +61,8 @@
                 "--max-seq-len", "77",
                 "--model-dir", "data/pretrained",
                 //* training
-                "--train-batch-size", "16",
-                "--eval-batch-size", "16",
+                "--train-batch-size", "8",
+                "--eval-batch-size", "8",
                 "--max-train-steps", "5000",
                 "--guidance-scale", "7.5",
                 // "--max-train-epochs", "10",
