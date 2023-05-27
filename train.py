@@ -117,7 +117,8 @@ class StableDiffusionTrainer:
                         "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}",
                         "tags": ["stable diffusion", "pytorch"],
                         "entity": "liwenbo2099",
-                        "resume": True,
+                        # "resume": True,
+                        # "id": "okoxasi7",
                         "save_code": True,
                     }
                 },
@@ -359,7 +360,11 @@ class StableDiffusionTrainer:
                     self.global_step += 1
                     if self.args.log.with_tracking:
                         self.accelerator.log(
-                            {"train_loss": train_loss}, step=self.global_step
+                            {
+                                "train_loss": train_loss,
+                                "lr": self.lr_scheduler.get_last_lr()[0],
+                            },
+                            step=self.global_step,
                         )
                     train_loss = 0.0
                     if (

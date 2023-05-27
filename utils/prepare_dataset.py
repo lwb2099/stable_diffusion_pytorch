@@ -25,8 +25,12 @@ from stable_diffusion.dataclass import BaseDataclass
 @dataclass
 class DatasetConfig(BaseDataclass):
     dataset: str = field(
-        default="Norod78/simpsons-blip-captions",
+        default="poloclub/diffusiondb",
         metadata={"help": "name of the dataset to use."},
+    )
+    subset: str = field(
+        default="2m_first_100k",
+        metadata={"help": "subset of the dataset to use."},
     )
     data_dir: str = field(
         default="data", metadata={"help": "Cache directory to store loaded dataset."}
@@ -57,7 +61,12 @@ def add_dataset_args(parser):
     dataset_group.add_argument(
         "--dataset",
         type=str,
-        default="Norod78/simpsons-blip-captions",
+        default="poloclub/diffusiondb",
+    )
+    dataset_group.add_argument(
+        "--subset",
+        type=str,
+        default="2m_first_100k",
     )
     dataset_group.add_argument(
         "--data_dir",
@@ -152,6 +161,7 @@ def get_dataset(
     # if dataset is not splited into train, validation and test, manually split it
     dataset = load_dataset(
         args.dataset,
+        args.subset,
         cache_dir=os.path.join(args.data_dir, args.dataset),
     )["train"]
 
