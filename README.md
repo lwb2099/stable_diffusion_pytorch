@@ -48,7 +48,7 @@ Though it can possibly run successfully, several problems yet still remains to b
 
 - I have searched the web yet python package dependencies and import rules, I think its a better way to learn in practice. 
 - Structure of this repo combines transformers and fairseq together, but I'm seeking a better structure for smaller projects.
-
+- Though I'v used dataclass, it is clearly a better way to build a model through config json file, and I'm 
 
 ## Reference:
 Thanks to the following amazing repositories that helped me build this code:

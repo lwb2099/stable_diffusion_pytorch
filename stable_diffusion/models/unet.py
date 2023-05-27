@@ -177,8 +177,8 @@ class UNetModel(nn.Module):
         context_dim = cfg.context_dim
         self.context_dim = cfg.context_dim
 
-        # * 1. time emb
         self.channels = channels_list[0]
+        # * 1. time emb
         time_emb_dim = cfg.time_emb_dim or channels_list[0] * 4
         timestep_input_dim = channels_list[0]
         self.time_embedding = nn.Sequential(
@@ -299,6 +299,7 @@ class UNetModel(nn.Module):
         for module in self.input_blocks:
             x = module(x, time_emb, context_emb)
             x_input_blocks.append(x)
+            print(f"input block: {module.__class__.__name__} - {x.shape}")
         # * bottleneck
         x = self.middle_block(x, time_emb, context_emb)
         # * output blocks
@@ -306,4 +307,5 @@ class UNetModel(nn.Module):
             # skip connection from input blocks
             x = torch.cat([x, x_input_blocks.pop()], dim=1)
             x = module(x, time_emb, context_emb)
+            print(f"output block: {module.__class__.__name__} - {x.shape}")
         return self.out(x)

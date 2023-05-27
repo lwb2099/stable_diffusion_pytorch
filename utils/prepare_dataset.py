@@ -200,9 +200,9 @@ def get_dataset(
             )
 
     image_column = [col for col in ["image", "img"] if col in dataset.column_names][0]
-    caption_colum = [col for col in ["text", "caption"] if col in dataset.column_names][
-        0
-    ]
+    caption_colum = [
+        col for col in ["text", "caption", "prompt"] if col in dataset.column_names
+    ][0]
 
     transform = get_transform(args.resolution, args.random_flip, args.center_crop)
 

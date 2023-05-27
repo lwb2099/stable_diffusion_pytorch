@@ -80,7 +80,7 @@ class StableDiffusionTrainer:
                 import deepspeed
             except ImportError as e:
                 raise ImportError(
-                    "You passed use_deepspeed=True, please install deepspeed by running `pip install deepspeed`"
+                    'You passed use_deepspeed=True, please install deepspeed by running `pip install deepspeed`, also deepspeed requies a matched cuda version, so you may need to run `conda install -c "nvidia/label/cuda-11.5.0" cuda-toolkit`, see https://anaconda.org/nvidia/cuda-toolkit for more options'
                 ) from e
 
         self.accelerator = Accelerator(
