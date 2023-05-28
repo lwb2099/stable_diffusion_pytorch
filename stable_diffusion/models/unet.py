@@ -32,26 +32,26 @@ class UnetConfig(BaseDataclass):
         default=2, metadata={"help": "Number of residual blocks at each level."}
     )
     n_heads: int = field(
-        default=1, metadata={"help": "Number of attention heads in transformers."}
+        default=8, metadata={"help": "Number of attention heads in transformers."}
     )
     attention_resolutions: List[int] = field(
-        default_factory=lambda: [1],
+        default_factory=lambda: [0, 1],
         metadata={
             "help": "At which level attention should be performed. e.g., [1, 2] means attention is performed at level 1 and 2."
         },
     )
     channels_list: List[int] = field(
-        default_factory=lambda: [32, 64],
+        default_factory=lambda: [160, 320],
         metadata={"help": "Channels at each level."},
     )
     time_emb_dim: Optional[int] = field(
-        default=None,
+        default=512,
         metadata={
             "help": "Time embedding dimension. If not specified, use 4 * channels_list[0] instead."
         },
     )
-    dropout: float = field(default=0.0, metadata={"help": "Dropout rate."})
-    n_layers: int = field(default=1, metadata={"help": "Number of transformer layers."})
+    dropout: float = field(default=0.1, metadata={"help": "Dropout rate."})
+    n_layers: int = field(default=2, metadata={"help": "Number of transformer layers."})
     context_dim: int = field(
         default=768, metadata={"help": "Embedding dim of context condition."}
     )

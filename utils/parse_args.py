@@ -306,4 +306,4 @@ def load_config(gen_args_fn=get_parser_from_dataclass):
     # nest model data classes into cfg.model
     cfg["model"] = DictConfig({})
     convert_dataclass_to_dictconfig(model_data_classes, cfg=cfg["model"])
-    return cfg
+    return args, cfg

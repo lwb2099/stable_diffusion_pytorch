@@ -17,33 +17,33 @@ from stable_diffusion.dataclass import BaseDataclass
 class LogConfig(BaseDataclass):
     logging_dir: str = field(default="logs", metadata={"help": "log directory"})
     with_tracking: bool = field(
-        default=False, metadata={"help": "whether enable tracker"}
+        default=True, metadata={"help": "whether enable tracker"}
     )
     report_to: str = field(
         default="wandb",
         metadata={"help": "tracker to use, only enabled when passed in --with_tracker"},
     )
     resume: bool = field(
-        default=False, metadata={"help": "whether resume from last run"}
+        default=False, metadata={"help": "whether resume from latest run"}
     )
 
 
 @dataclass
 class TrainConfig(BaseDataclass):
-    seed: int = field(default=0, metadata={"help": "seed argument"})
-    train_batch_size: int = field(
-        default=1, metadata={"help": "train batch size per processor"}
-    )
+    seed: int = field(default=42, metadata={"help": "seed argument"})
     max_train_steps: int = field(
-        default=1000,
+        default=20000,
         metadata={"help": "total train steps, if provided, overrides max_train_epochs"},
     )
     max_train_epochs: int = field(default=100, metadata={"help": "max train epochs"})
+    train_batch_size: int = field(
+        default=8, metadata={"help": "train batch size per processor"}
+    )
     eval_batch_size: int = field(
-        default=1, metadata={"help": "eval batch size per processor"}
+        default=8, metadata={"help": "eval batch size per processor"}
     )
     log_interval: int = field(
-        default=0,
+        default=100,
         metadata={
             "help": "do evaluation every n steps, default 0 means no evaluation during training"
         },
@@ -52,7 +52,7 @@ class TrainConfig(BaseDataclass):
         default=1, metadata={"help": "gradient accumulation steps"}
     )
     use_deepspeed: bool = field(
-        default=False, metadata={"help": "whether use deepspeed"}
+        default=True, metadata={"help": "whether use deepspeed"}
     )
     guidance_scale: float = field(
         default=7.5, metadata={"help": "guidance scale for classifier free guidance"}
@@ -77,7 +77,7 @@ class OptimConfig(BaseDataclass):
         default="linear", metadata={"help": "scheduler type argument"}
     )
     lr_warmup_steps: int = field(
-        default=0, metadata={"help": "learning rate warm-up steps argument"}
+        default=500, metadata={"help": "learning rate warm-up steps argument"}
     )
 
 

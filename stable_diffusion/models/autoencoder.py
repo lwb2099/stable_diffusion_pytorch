@@ -28,13 +28,13 @@ class AutoencoderConfig(BaseDataclass):
         default=4, metadata={"help": "Embedding channels of the latent vector."}
     )
     out_channels: Optional[int] = field(
-        default=None,
+        default=3,
         metadata={
             "help": "Number of output channels of the decoded image. Should be the same as in_channels."
         },
     )
     autoencoder_channels_list: List[int] = field(
-        default_factory=lambda: [32, 64],
+        default_factory=lambda: [64, 128],
         metadata={
             "help": "Comma-separated list of channel multipliers for each level."
         },
@@ -42,7 +42,9 @@ class AutoencoderConfig(BaseDataclass):
     autoencoder_num_res_blocks: int = field(
         default=2, metadata={"help": "Number of residual blocks per level."}
     )
-    groups: int = field(default=2, metadata={"help": "Number of groups for GroupNorm."})
+    groups: int = field(
+        default=32, metadata={"help": "Number of groups for GroupNorm."}
+    )
 
 
 class AutoEncoderKL(nn.Module):
@@ -64,7 +66,7 @@ class AutoEncoderKL(nn.Module):
         autoencoder.add_argument(
             "--out_channels",
             type=int,
-            default=None,
+            default=3,
             help="number of output channels of decoded image, should be the same with in_channels",
         )
         autoencoder.add_argument(
@@ -83,7 +85,7 @@ class AutoEncoderKL(nn.Module):
         autoencoder.add_argument(
             "--groups",
             type=int,
-            default=4,
+            default=32,
             help="number of groups for GroupNorm",
         )
 

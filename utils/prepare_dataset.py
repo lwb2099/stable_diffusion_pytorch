@@ -29,11 +29,12 @@ class DatasetConfig(BaseDataclass):
         metadata={"help": "name of the dataset to use."},
     )
     subset: str = field(
-        default="2m_first_100k",
+        default="2m_first_10k",
         metadata={"help": "subset of the dataset to use."},
     )
     data_dir: str = field(
-        default="data", metadata={"help": "Cache directory to store loaded dataset."}
+        default="data/dataset",
+        metadata={"help": "Cache directory to store loaded dataset."},
     )
     dataloader_num_workers: int = field(
         default=4, metadata={"help": "number of workers for the dataloaders."}
@@ -43,16 +44,16 @@ class DatasetConfig(BaseDataclass):
         default=True, metadata={"help": "whether to apply center cropping."}
     )
     random_flip: bool = field(
-        default=True, metadata={"help": "whether to apply random flipping."}
+        default=False, metadata={"help": "whether to apply random flipping."}
     )
     max_train_samples: Optional[int] = field(
-        default=None, metadata={"help": "max number of training samples to load."}
+        default=9000, metadata={"help": "max number of training samples to load."}
     )
     max_val_samples: Optional[int] = field(
-        default=None, metadata={"help": "max number of validation samples to load."}
+        default=500, metadata={"help": "max number of validation samples to load."}
     )
     max_test_samples: Optional[int] = field(
-        default=None, metadata={"help": "max number of test samples to load."}
+        default=500, metadata={"help": "max number of test samples to load."}
     )
 
 

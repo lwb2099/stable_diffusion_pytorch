@@ -21,7 +21,7 @@ class ClipConfig(BaseDataclass):
         default=77, metadata={"help": "Maximum sequence length for tokenized text."}
     )
     model_dir: Optional[str] = field(
-        default=None,
+        default="data/pretrained",
         metadata={"help": "Path to a directory to store the pretrained CLIP model."},
     )
 

@@ -21,10 +21,12 @@ class CheckpointConfig(BaseDataclass):
     )
     resume_from_checkpoint: Optional[str] = field(
         default=None,
-        metadata={"help": "dir to load checkpoints from"},
+        metadata={
+            "help": "dir to load checkpoints from， None refers to latest or a new run"
+        },
     )
     checkpointing_steps: Optional[str] = field(
-        default=None,
+        default=100,
         metadata={
             "help": "Whether the various states should be saved at the end of every n steps",
         },
