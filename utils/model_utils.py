@@ -34,7 +34,9 @@ def build_models(model_cfg, logger=None):
         model_cfg.unet,
     )
     text_encoder = CLIPModel(model_cfg.clip)
+    text_encoder.requires_grad_(False)
     autoencoder = AutoEncoderKL(model_cfg.autoencoder)
+
     count_params(unet, logger=logger)
     count_params(text_encoder, logger=logger)
     count_params(autoencoder, logger=logger)

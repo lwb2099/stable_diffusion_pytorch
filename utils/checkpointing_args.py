@@ -22,7 +22,7 @@ class CheckpointConfig(BaseDataclass):
     resume_from_checkpoint: Optional[str] = field(
         default=None,
         metadata={
-            "help": "dir to load checkpoints from， None refers to latest or a new run"
+            "help": "dir to load checkpoints from， None refers to a new run, pass ltest for a latest resume"
         },
     )
     checkpointing_steps: Optional[str] = field(

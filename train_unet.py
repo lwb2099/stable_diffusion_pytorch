@@ -33,6 +33,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 from diffusers import AutoencoderKL
+from torch.distributed.elastic.multiprocessing.errors import record
 
 # build environment
 # os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
@@ -63,6 +64,13 @@ class StableDiffusionTrainer:
             eval_dataset is not None and cfg.train.log_interval > 0
         ), "if passed log_interval > 0, you must specify an evaluation dataset"
         self.model: LatentDiffusion = model
+        # test autoencoder
+        self.model.autoencoder = AutoencoderKL.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            subfolder="vae",
+            cache_dir="data/pretrained",
+        )
+        self.model.autoencoder.requires_grad_(False)
         self.cfg = cfg
         self.train_dataset: Dataset = train_dataset
         self.eval_dataset: Dataset = eval_dataset
@@ -114,6 +122,7 @@ class StableDiffusionTrainer:
 
                 wandb_kwargs = {
                     "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}",
+                    "notes": "train unet only",
                     "tags": ["stable diffusion", "pytorch"],
                     "entity": "liwenbo2099",
                     "resume": cfg.log.resume,
@@ -302,6 +311,7 @@ class StableDiffusionTrainer:
         )
 
     def train(self):
+        cfg = self.cfg
         # * 7. Resume training state and ckpt
         self.__resume_from_ckpt(cfg.checkpoint)
         self.__resume_train_state(cfg.train, self.ckpt_path)
@@ -403,7 +413,7 @@ class StableDiffusionTrainer:
                     logger.info(
                         f"Evaluate on eval dataset [len: {len(self.eval_dataset)}]"
                     )
-                    model.eval()
+                    self.model.eval()
                     losses = []
                     eval_bar = tqdm(
                         self.eval_dataloader,
@@ -462,7 +472,7 @@ class StableDiffusionTrainer:
         # * 1. encode image
         latent_vector = self.model.autoencoder.encode(
             batch["pixel_values"].to(self.weight_dtype)
-        ).sample()
+        ).latent_dist.sample()
         noise = torch.randn(latent_vector.shape).to(self.accelerator.device)
         # * 2. Sample a random timestep for each image
         timesteps = torch.randint(
@@ -488,7 +498,8 @@ class StableDiffusionTrainer:
         return F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
 
 
-if __name__ == "__main__":
+@record
+def main():
     args, cfg = load_config()
     model = build_models(cfg.model, logger)
     train_dataset = get_dataset(
@@ -514,5 +525,9 @@ if __name__ == "__main__":
     trainer.train()
 
 
+if __name__ == "__main__":
+    main()
+
+
 # to run without debug:
-# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train.py --use-deepspeed
+# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_unet.py --use-deepspeed
