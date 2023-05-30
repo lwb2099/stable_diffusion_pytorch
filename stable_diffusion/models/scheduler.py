@@ -198,7 +198,7 @@ class DDPMScheduler:
         # Do not add noise when $t = 1$ (final step sampling process).
         # Note that `step` is `0` when $t = 1$)
         if time_step == 0:
-            noise = 0
+            noise = torch.zeros(x_t.shape)
         # If same noise is used for all samples in the batch
         elif repeat_noise:
             noise = torch.randn((1, *x_t.shape[1:]))
@@ -207,7 +207,7 @@ class DDPMScheduler:
             noise = torch.randn(x_t.shape)
 
         # Multiply noise by the temperature
-        noise = noise * scale_factor
+        noise = noise.to(mean.device, dtype=mean.dtype) * scale_factor
         # Sample from,
         # $$p_\theta(x_{t-1} | x_t) = \mathcal{N}\big(x_{t-1}; \mu_\theta(x_t, t), \tilde\beta_t \mathbf{I} \big)$$
         x_prev = mean + (0.5 * log_var).exp() * noise

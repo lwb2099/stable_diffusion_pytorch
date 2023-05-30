@@ -15,6 +15,10 @@ from stable_diffusion.dataclass import BaseDataclass
 
 @dataclass
 class CheckpointConfig(BaseDataclass):
+    keep_last_only: bool = field(
+        default=True,
+        metadata={"help": "whether only keep the last ckpt"},
+    )
     output_dir: str = field(
         default="model",
         metadata={"help": "dir to save and load checkpoints"},
@@ -26,7 +30,7 @@ class CheckpointConfig(BaseDataclass):
         },
     )
     checkpointing_steps: Optional[str] = field(
-        default=100,
+        default=1000,
         metadata={
             "help": "Whether the various states should be saved at the end of every n steps",
         },

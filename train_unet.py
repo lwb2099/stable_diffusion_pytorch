@@ -26,7 +26,7 @@ import logging
 from stable_diffusion.models.latent_diffusion import LatentDiffusion
 from utils.model_utils import build_models
 from utils.parse_args import load_config
-from utils.prepare_dataset import collate_fn, get_dataset
+from utils.prepare_dataset import collate_fn, detransform, get_dataset, to_img
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -36,7 +36,6 @@ from diffusers import AutoencoderKL
 from torch.distributed.elastic.multiprocessing.errors import record
 
 # build environment
-# os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
 os.environ["TORCH_SHOW_CPP_STACKTRACES"] = "1"
@@ -494,8 +493,48 @@ class StableDiffusionTrainer:
             tokenized_text  # adding `.to(self.weight_dtype)` causes error...
         )[0].to(self.weight_dtype)
         # * 5. predict noise
-        pred_noise = self.model.pred_noise(x_t, timesteps, text_condition)
+        pred_noise = self.model.pred_noise(
+            x_t, timesteps, text_condition, guidance_scale=self.cfg.train.guidance_scale
+        )
         return F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
+
+    def sample(
+        self,
+        image_size=64,
+        prompt: str = "",
+        guidance_scale: float = 7.5,
+        scale_factor=1.0,
+    ):
+        "Sample an image given prompt"
+        # random noise
+        noise = torch.randn(
+            size=(
+                1,
+                self.model.autoencoder.config.latent_channels,
+                image_size,
+                image_size,
+            )
+        ).to(self.accelerator.device, dtype=self.weight_dtype)
+        # tokenize prompt
+        tokenized_prompt = self.model.text_encoder.tokenize([prompt]).input_ids.to(
+            self.accelerator.device
+        )
+        context_emb = self.model.text_encoder.encode_text(tokenized_prompt)[0].to(
+            self.weight_dtype
+        )
+        x_0 = self.model.sample(
+            noised_sample=noise,
+            context_emb=context_emb,
+            guidance_scale=guidance_scale,
+            scale_factor=scale_factor,
+        )
+        sample = self.model.autoencoder.decode(x_0)
+        sample = detransform(sample)
+        to_img(sample, "output")
+        if self.cfg.log.with_tracking:
+            import wandb
+
+            self.accelerator.log({"sample": wandb.Image(sample), "prompt": prompt})
 
 
 @record
@@ -523,6 +562,7 @@ def main():
         collate_fn=collate_fn,
     )
     trainer.train()
+    trainer.sample(prompt="a cat sat on the mat")
 
 
 if __name__ == "__main__":

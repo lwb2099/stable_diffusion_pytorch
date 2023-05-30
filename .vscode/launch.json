@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Train",
+            "name": "Train_UNet",
             "type": "python",
             "request": "launch",
             "module": "accelerate.commands.launch",
@@ -14,13 +14,13 @@
             "args": [
                 "--config_file", "stable_diffusion/config/accelerate_config/deepspeed.yaml",
                 "--main_process_port", "29511",
-                "train.py",
+                "train_unet.py",
                 // //* logging
                 // "--with-tracking",
                 // "--report-to", "wandb",
                 // //* data
                 // "--dataset", "poloclub/diffusiondb",
-                // "--subset", "2m_first_10k",
+                "--subset", "2m_first_10k",
                 // "--data-dir", "data/dataset",
                 // "--resolution", "64", 
                 // "--random-flip",
@@ -37,7 +37,7 @@
                 // "--num-res-blocks", "2",
                 // "--n-heads", "8",
                 // "--attention-resolutions", "0,1",
-                // "--channels-list", "160,320",  // "160,320,640,640",
+                "--channels-list", "32",  // "160,320,640,640",
                 // "--time-emb-dim", "512",
                 // "--dropout", "0.1",
                 // "--n-layers", "2",
@@ -61,9 +61,9 @@
                 // "--model-dir", "data/pretrained",
                 // //* training
                 // "--seed", "42",
-                // "--train-batch-size", "8",
+                "--train-batch-size", "1",
                 // "--eval-batch-size", "8",
-                // "--max-train-steps", "20000",
+                "--max-train-steps", "2",
                 // "--guidance-scale", "7.5",
                 // // "--max-train-epochs", "10",
                 // "--log-interval", "100",

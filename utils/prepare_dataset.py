@@ -20,6 +20,7 @@ from transformers import CLIPTokenizer
 from dataclasses import dataclass, field
 
 from stable_diffusion.dataclass import BaseDataclass
+from PIL import Image
 
 
 @dataclass
@@ -138,6 +139,19 @@ def get_transform(resolution, random_flip, center_crop):
     )
 
 
+def detransform(latent: torch.Tensor):
+    latent = latent.squeeze().cpu().detach().numpy()
+    latent = np.transpose(latent, (1, 2, 0))  # [c,h,w] -> [h,w,c]
+    latent = (latent + 1) / 2
+    latent = np.clip(latent, 0, 1)
+    return (latent * 255).astype(np.uint8)
+
+
+def to_img(digit_img, output_path: str = ""):
+    img = Image.fromarray(digit_img.astype(np.uint8))
+    img.save(os.path.join(output_path, "sample.png"))
+
+
 def get_dataset(
     args,
     split: str = "train",
@@ -152,14 +166,8 @@ def get_dataset(
         "validation",
         "test",
     }, "split should be one of train, validation, test"
-    # load dataset
-    # dataset = load_dataset(
-    #     args.dataset,
-    #     cache_dir=os.path.join(args.data_dir, args.dataset),
-    #     split=split,
-    # )
 
-    # if dataset is not splited into train, validation and test, manually split it
+    # most of the txt2img datasets are not splited into train, validation and test, manually split it
     dataset = load_dataset(
         args.dataset,
         args.subset,

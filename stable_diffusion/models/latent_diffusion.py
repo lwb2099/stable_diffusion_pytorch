@@ -51,16 +51,23 @@ class LatentDiffusion(nn.Module):
         t_in = torch.cat([time_step] * 2)
         x_in = torch.cat([noised_sample] * 2)
         bsz = noised_sample.shape[0]
-        uncond_emb = self.text_encoder.encode([""] * bsz)
+        tokenized_text = self.text_encoder.tokenize([""] * bsz).input_ids.to(
+            noised_sample.device
+        )
+        uncond_emb = self.text_encoder.encode_text(
+            tokenized_text  # adding `.to(self.weight_dtype)` causes error...
+        )[0]
         c_in = torch.cat([uncond_emb, context_emb])
-        pred_noise_cond, pred_noise_uncond = self.unet(x_in, t_in, c_in).chuck(2)
+        pred_noise_cond, pred_noise_uncond = torch.chunk(
+            self.unet(x_in, t_in, c_in), 2, dim=0
+        )
         return pred_noise_cond + guidance_scale * (pred_noise_cond - pred_noise_uncond)
 
     def sample(
         self,
         noised_sample: torch.Tensor,
         context_emb: torch.Tensor,
-        guidence_scale: float = 7.5,
+        guidance_scale: float = 7.5,
         repeat_noise: bool = False,
         scale_factor: float = 1.0,
     ):
@@ -101,7 +108,7 @@ class LatentDiffusion(nn.Module):
                 noised_sample=x,
                 time_step=time_step,
                 context_emb=context_emb,
-                guidance_scale=guidence_scale,
+                guidance_scale=guidance_scale,
             )
             # Sample x_{t-1}
             x, pred_x0 = self.noise_scheduler.step(

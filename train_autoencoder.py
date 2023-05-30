@@ -23,16 +23,24 @@ from accelerate.utils import (
 )
 from transformers import get_scheduler
 import logging
+from stable_diffusion.models.autoencoder import AutoEncoderKL
 from stable_diffusion.models.latent_diffusion import LatentDiffusion
 from utils.model_utils import build_models
 from utils.parse_args import load_config
-from utils.prepare_dataset import collate_fn, get_dataset
+from utils.prepare_dataset import (
+    collate_fn,
+    detransform,
+    get_dataset,
+    get_transform,
+    to_img,
+)
 import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
-from diffusers import AutoencoderKL
+from torch.distributed.elastic.multiprocessing.errors import record
+from PIL import Image
 
 # build environment
 # os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
@@ -47,10 +55,10 @@ logging.basicConfig(
 )
 
 
-class StableDiffusionTrainer:
+class AutoencoderKLTrainer:
     def __init__(
         self,
-        model: LatentDiffusion,
+        model: AutoEncoderKL,
         args,
         cfg,
         train_dataset,
@@ -62,7 +70,14 @@ class StableDiffusionTrainer:
         assert (
             eval_dataset is not None and cfg.train.log_interval > 0
         ), "if passed log_interval > 0, you must specify an evaluation dataset"
-        self.model: LatentDiffusion = model
+        self.model: AutoEncoderKL = model
+        # test autoencoder
+        self.model.autoencoder = AutoEncoderKL.from_pretrained(
+            "runwayml/stable-diffusion-v1-5",
+            subfolder="vae",
+            cache_dir="data/pretrained",
+        )
+        self.model.autoencoder.requires_grad_(False)
         self.cfg = cfg
         self.train_dataset: Dataset = train_dataset
         self.eval_dataset: Dataset = eval_dataset
@@ -114,6 +129,7 @@ class StableDiffusionTrainer:
 
                 wandb_kwargs = {
                     "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}",
+                    "notes": "train unet only",
                     "tags": ["stable diffusion", "pytorch"],
                     "entity": "liwenbo2099",
                     "resume": cfg.log.resume,
@@ -180,9 +196,7 @@ class StableDiffusionTrainer:
             self.weight_dtype = torch.bfloat16
         elif self.accelerator.mixed_precision == "fp16":
             self.weight_dtype = torch.float16
-        self.model.text_encoder.to(self.accelerator.device, dtype=self.weight_dtype)
-        self.model.autoencoder.to(self.accelerator.device, dtype=self.weight_dtype)
-        self.model.unet.to(self.accelerator.device, dtype=self.weight_dtype)
+        self.model.to(self.accelerator.device, dtype=self.weight_dtype)
 
     def get_dataloader(
         self, train, dataset, collate_fn, batch_size, num_workers
@@ -302,6 +316,7 @@ class StableDiffusionTrainer:
         )
 
     def train(self):
+        cfg = self.cfg
         # * 7. Resume training state and ckpt
         self.__resume_from_ckpt(cfg.checkpoint)
         self.__resume_train_state(cfg.train, self.ckpt_path)
@@ -356,7 +371,7 @@ class StableDiffusionTrainer:
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
                         self.accelerator.clip_grad_norm_(
-                            self.model.unet.parameters(), cfg.optim.max_grad_norm
+                            self.model.parameters(), cfg.optim.max_grad_norm
                         )
                     # * 8. update
                     self.optimizer.step()
@@ -381,9 +396,11 @@ class StableDiffusionTrainer:
                         and self.global_step % self.checkpointing_steps == 0
                     ):
                         save_path = os.path.join(
-                            cfg.checkpoint.output_dir,
-                            f"checkpoint-{self.global_step}",
+                            cfg.checkpoint.output_dir, f"checkpoint-{self.global_step}"
                         )
+                        if self.cfg.checkpoint.keep_last_only:
+                            os.removedirs(self.cfg.checkpoint.output_dir)
+                            os.makedirs(self.cfg.checkpoint.output_dir)
                         self.accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
@@ -403,7 +420,7 @@ class StableDiffusionTrainer:
                     logger.info(
                         f"Evaluate on eval dataset [len: {len(self.eval_dataset)}]"
                     )
-                    model.eval()
+                    self.model.eval()
                     losses = []
                     eval_bar = tqdm(
                         self.eval_dataloader,
@@ -434,7 +451,10 @@ class StableDiffusionTrainer:
             if self.checkpointing_steps == "epoch":
                 output_dir = f"epoch_{epoch}"
                 if cfg.checkpoint.output_dir is not None:
-                    output_dir = os.path.join(cfg.output_dir, output_dir)
+                    output_dir = os.path.join(cfg.output_dir, output_dir, "autoencoder")
+                if self.cfg.checkpoint.keep_last_only:
+                    os.removedirs(self.cfg.checkpoint.output_dir)
+                    os.makedirs(self.cfg.checkpoint.output_dir)
                 logger.info(f"Saved state to {output_dir}")
                 self.accelerator.save_state(output_dir)
 
@@ -442,10 +462,6 @@ class StableDiffusionTrainer:
         self.accelerator.wait_for_everyone()
         if self.cfg.log.with_tracking:
             self.accelerator.end_training()
-
-        if self.accelerator.is_main_process:
-            output_dir = os.path.join(self.cfg.output_dir, self.global_step)
-            self.accelerator.save_state()
 
     def __one_step(self, batch: dict):
         """
@@ -460,37 +476,26 @@ class StableDiffusionTrainer:
                   mse loss between sampled real noise and pred noise
         """
         # * 1. encode image
-        latent_vector = self.model.autoencoder.encode(
+        latent_vector = self.model.encode(
             batch["pixel_values"].to(self.weight_dtype)
-        ).sample()
-        noise = torch.randn(latent_vector.shape).to(self.accelerator.device)
-        # * 2. Sample a random timestep for each image
-        timesteps = torch.randint(
-            self.model.noise_scheduler.noise_steps, (batch["pixel_values"].shape[0],)
-        ).to(self.accelerator.device, dtype=torch.long)
-        # timesteps = timesteps.long()
-        # * 3. add noise to latent vector
-        x_t = self.model.noise_scheduler.add_noise(
-            original_samples=latent_vector, timesteps=timesteps, noise=noise
-        ).to(dtype=self.weight_dtype)
-        # * 4. get text encoding latent
-        tokenized_text = batch["input_ids"]
-        # 90 % of the time we use the true text encoding, 10 % of the time we use an empty string
-        if np.random.random() < 0.1:
-            tokenized_text = self.model.text_encoder.tokenize(
-                [""] * len(tokenized_text)
-            ).input_ids.to(self.accelerator.device)
-        text_condition = self.model.text_encoder.encode_text(
-            tokenized_text  # adding `.to(self.weight_dtype)` causes error...
-        )[0].to(self.weight_dtype)
-        # * 5. predict noise
-        pred_noise = self.model.pred_noise(x_t, timesteps, text_condition)
-        return F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
+        ).latent_dist.sample()
+        recon_image = self.model.decode(latent_vector).logits
+        return F.mse_loss(latent_vector.float(), recon_image.float(), reduction="mean")
+
+    def recon(self, image):
+        transform = get_transform(resolution=64, center_crop=False, random_flip=False)
+        image = transform(image)
+        image = image.unsqueeze(0)  # [batch, ...]
+        latent_vector = self.model.encode(image).sample()
+        recon_latent = self.model.decode(latent_vector).logits
+        recon_digit = detransform(recon_latent)
+        return to_img(recon_digit, output_path="output")
 
 
-if __name__ == "__main__":
+@record
+def main():
     args, cfg = load_config()
-    model = build_models(cfg.model, logger)
+    model = AutoEncoderKL(cfg.model.autoencoder)
     train_dataset = get_dataset(
         cfg.dataset,
         split="train",
@@ -503,7 +508,7 @@ if __name__ == "__main__":
         tokenizer=model.text_encoder.tokenizer,
         logger=logger,
     )
-    trainer = StableDiffusionTrainer(
+    trainer = AutoencoderKLTrainer(
         model,
         args,
         cfg,
@@ -512,7 +517,15 @@ if __name__ == "__main__":
         collate_fn=collate_fn,
     )
     trainer.train()
+    # load img
+    img_PIL = Image.open("test/test01.png")
+    img = np.array(img_PIL)
+    trainer.recon(img)
+
+
+if __name__ == "__main__":
+    main()
 
 
 # to run without debug:
-# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train.py --use-deepspeed
+# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_autoencoder.py --use-deepspeed

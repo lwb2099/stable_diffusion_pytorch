@@ -99,12 +99,12 @@ def add_distributed_training_args(parser):
     train_group.add_argument(
         "--train_batch_size",
         type=int,
-        default=1,
+        default=8,
     )
     train_group.add_argument(
         "--max_train_steps",
         type=int,
-        default=1000,
+        default=20000,
         help="total train steps, if provided, overrides max_train_epochs",
     )
     train_group.add_argument(
