@@ -443,7 +443,7 @@ class StableDiffusionTrainer:
             if self.checkpointing_steps == "epoch":
                 output_dir = f"epoch_{epoch}"
                 if cfg.checkpoint.output_dir is not None:
-                    output_dir = os.path.join(cfg.output_dir, output_dir)
+                    output_dir = os.path.join(cfg.checkpoint.output_dir, output_dir)
                 logger.info(f"Saved state to {output_dir}")
                 self.accelerator.save_state(output_dir)
 
@@ -453,7 +453,9 @@ class StableDiffusionTrainer:
             self.accelerator.end_training()
 
         if self.accelerator.is_main_process:
-            output_dir = os.path.join(self.cfg.output_dir, self.global_step)
+            output_dir = os.path.join(
+                self.cfg.checkpoint.output_dir, f"checkpoint-{self.global_step}"
+            )
             self.accelerator.save_state()
 
     def __one_step(self, batch: dict):
@@ -504,17 +506,18 @@ class StableDiffusionTrainer:
         prompt: str = "",
         guidance_scale: float = 7.5,
         scale_factor=1.0,
+        save_dir: str = "output",
     ):
         "Sample an image given prompt"
         # random noise
-        noise = torch.randn(
-            size=(
-                1,
-                self.model.autoencoder.config.latent_channels,
-                image_size,
-                image_size,
-            )
-        ).to(self.accelerator.device, dtype=self.weight_dtype)
+        # to get the right latent size
+        img_util = torch.randn(size=(1, 3, image_size, image_size)).to(
+            self.accelerator.device, dtype=self.weight_dtype
+        )
+        noise = self.model.autoencoder.encode(img_util).latent_dist.sample()
+        noise = torch.rand_like(noise).to(
+            self.accelerator.device, dtype=self.weight_dtype
+        )
         # tokenize prompt
         tokenized_prompt = self.model.text_encoder.tokenize([prompt]).input_ids.to(
             self.accelerator.device
@@ -530,7 +533,7 @@ class StableDiffusionTrainer:
         )
         sample = self.model.autoencoder.decode(x_0)
         sample = detransform(sample)
-        to_img(sample, "output")
+        to_img(sample, output_path=save_dir)
         if self.cfg.log.with_tracking:
             import wandb
 

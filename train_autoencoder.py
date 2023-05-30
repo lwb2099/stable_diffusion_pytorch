@@ -25,6 +25,7 @@ from transformers import get_scheduler
 import logging
 from stable_diffusion.models.autoencoder import AutoEncoderKL
 from stable_diffusion.models.latent_diffusion import LatentDiffusion
+from stable_diffusion.modules.distributions import GaussianDistribution
 from utils.model_utils import build_models
 from utils.parse_args import load_config
 from utils.prepare_dataset import (
@@ -41,6 +42,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 from torch.distributed.elastic.multiprocessing.errors import record
 from PIL import Image
+from transformers import CLIPTokenizer
 
 # build environment
 # os.environ["CUDA_VISIBLE_DEVICES"] = "4,5,6,7"
@@ -71,13 +73,8 @@ class AutoencoderKLTrainer:
             eval_dataset is not None and cfg.train.log_interval > 0
         ), "if passed log_interval > 0, you must specify an evaluation dataset"
         self.model: AutoEncoderKL = model
-        # test autoencoder
-        self.model.autoencoder = AutoEncoderKL.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
-            subfolder="vae",
-            cache_dir="data/pretrained",
-        )
-        self.model.autoencoder.requires_grad_(False)
+        # make sure model is in train mode
+        self.model.requires_grad_(True)
         self.cfg = cfg
         self.train_dataset: Dataset = train_dataset
         self.eval_dataset: Dataset = eval_dataset
@@ -187,7 +184,7 @@ class AutoencoderKLTrainer:
             self.lr_scheduler,
         )
         # * enable variable annotations so that we can easily debug
-        self.model: LatentDiffusion = self.model
+        self.model: AutoEncoderKL = self.model
         self.train_dataloader: DataLoader = self.train_dataloader
         self.eval_dataloader: DataLoader = self.eval_dataloader
         # * 6. Move text_encoder and autoencoder to gpu and cast to weight_dtype
@@ -234,7 +231,7 @@ class AutoencoderKLTrainer:
 
         return optimizer_cls(
             # only train unet
-            self.model.unet.parameters(),
+            self.model.parameters(),
             lr=optim_cfg.learning_rate,
             weight_decay=optim_cfg.adam_weight_decay,
         )
@@ -360,7 +357,7 @@ class AutoencoderKLTrainer:
                         self.global_step += 1
                         self.progress_bar.update(1)
                     continue
-                with self.accelerator.accumulate(self.model.unet):
+                with self.accelerator.accumulate(self.model):
                     loss = self.__one_step(batch)
                     # gather loss across processes for logging
                     avg_loss = self.accelerator.gather(
@@ -473,39 +470,49 @@ class AutoencoderKLTrainer:
 
         Returns:
             - torch.Tensor:
-                  mse loss between sampled real noise and pred noise
+                  recon loss + kl loss
         """
         # * 1. encode image
-        latent_vector = self.model.encode(
-            batch["pixel_values"].to(self.weight_dtype)
-        ).latent_dist.sample()
-        recon_image = self.model.decode(latent_vector).logits
-        return F.mse_loss(latent_vector.float(), recon_image.float(), reduction="mean")
+        img = batch["pixel_values"].to(self.weight_dtype)
+        dist: GaussianDistribution = self.model.encode(img).latent_dist
+        latent_vector = dist.sample()
+        recon_image = self.model.decode(latent_vector)
+        recon_loss = F.mse_loss(img.float(), recon_image.float(), reduction="mean")
+        kl_loss = dist.kl()
+        return recon_loss + self.cfg.model.autoencoder.kl_weight * kl_loss
 
     def recon(self, image):
         transform = get_transform(resolution=64, center_crop=False, random_flip=False)
         image = transform(image)
-        image = image.unsqueeze(0)  # [batch, ...]
-        latent_vector = self.model.encode(image).sample()
-        recon_latent = self.model.decode(latent_vector).logits
+        image = image.unsqueeze(0).to(
+            self.accelerator.device, dtype=self.weight_dtype
+        )  # [1, ...]
+        latent_vector = self.model.encode(image).latent_dist.sample()
+        recon_latent = self.model.decode(latent_vector)
         recon_digit = detransform(recon_latent)
-        return to_img(recon_digit, output_path="output")
+        to_img(recon_digit, output_path="output", name="autoencoder")
 
 
 @record
 def main():
     args, cfg = load_config()
     model = AutoEncoderKL(cfg.model.autoencoder)
+    tokenizer = CLIPTokenizer.from_pretrained(
+        "runwayml/stable-diffusion-v1-5",
+        subfolder="tokenizer",
+        use_fast=False,
+        cache_dir="data/pretrained",
+    )
     train_dataset = get_dataset(
         cfg.dataset,
         split="train",
-        tokenizer=model.text_encoder.tokenizer,
+        tokenizer=tokenizer,
         logger=logger,
     )
     eval_dataset = get_dataset(
         cfg.dataset,
         split="validation",
-        tokenizer=model.text_encoder.tokenizer,
+        tokenizer=tokenizer,
         logger=logger,
     )
     trainer = AutoencoderKLTrainer(
@@ -518,8 +525,7 @@ def main():
     )
     trainer.train()
     # load img
-    img_PIL = Image.open("test/test01.png")
-    img = np.array(img_PIL)
+    img = Image.open("test/test01.png")
     trainer.recon(img)
 
 

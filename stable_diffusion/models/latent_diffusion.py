@@ -1,3 +1,4 @@
+from typing import Optional
 import torch
 from torch import nn
 from tqdm import tqdm
@@ -70,6 +71,7 @@ class LatentDiffusion(nn.Module):
         guidance_scale: float = 7.5,
         repeat_noise: bool = False,
         scale_factor: float = 1.0,
+        time_steps: Optional[int] = None,
     ):
         """
         Sample loop to get x_0 given x_t and conditional embedding
@@ -98,9 +100,11 @@ class LatentDiffusion(nn.Module):
         # Time steps to sample at $T - t', T - t' - 1, \dots, 1$
 
         # Sampling loop
-        progress_bar = tqdm(
-            reversed(self.noise_scheduler.noise_time_steps), desc="Sampling"
-        )
+        if time_steps is not None:
+            noise_time_steps = range(time_steps, 0, -1)
+        else:
+            noise_time_steps = self.noise_scheduler.noise_time_steps
+        progress_bar = tqdm(reversed(noise_time_steps), desc="Sampling")
         for step in progress_bar:
             # fill time step t from int to tensor of shape=`[batch]`
             time_step = x.new_full((bsz,), step, dtype=torch.long)

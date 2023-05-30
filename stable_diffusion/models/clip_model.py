@@ -33,12 +33,12 @@ class CLIPModel(nn.Module):
         clip_group.add_argument(
             "--tokenizer",
             type=str,
-            default="openai/clip-vit-base-patch32",
+            default="runwayml/stable-diffusion-v1-5",
         )
         clip_group.add_argument(
             "--text_encoder",
             type=str,
-            default="openai/clip-vit-base-patch32",
+            default="runwayml/stable-diffusion-v1-5",
         )
         clip_group.add_argument(
             "--max_seq_len",

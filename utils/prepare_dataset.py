@@ -147,9 +147,10 @@ def detransform(latent: torch.Tensor):
     return (latent * 255).astype(np.uint8)
 
 
-def to_img(digit_img, output_path: str = ""):
+def to_img(digit_img, output_path: str = "", name="sample"):
     img = Image.fromarray(digit_img.astype(np.uint8))
-    img.save(os.path.join(output_path, "sample.png"))
+    img.save(os.path.join(output_path, f"{name}.png"))
+    return img
 
 
 def get_dataset(

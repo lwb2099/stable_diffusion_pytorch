@@ -45,6 +45,7 @@ class AutoencoderConfig(BaseDataclass):
     groups: int = field(
         default=32, metadata={"help": "Number of groups for GroupNorm."}
     )
+    kl_weight: float = field(default=1.0, metadata={"help": "Weight of the KL loss."})
 
 
 class AutoEncoderKL(nn.Module):
@@ -142,7 +143,7 @@ class AutoEncoderKL(nn.Module):
         # Get the moments in the quantized embedding space
         moments = self.quant_conv(z)
         # Return the distribution(posterior)
-        return GaussianDistribution(moments)
+        return AutoEncoderKLOutput(GaussianDistribution(moments))
 
     def decode(self, latent: torch.Tensor) -> torch.Tensor:
         """
@@ -154,7 +155,7 @@ class AutoEncoderKL(nn.Module):
         """
         # check params
         assert (
-            z.shape[1] == self.latent_channels
+            latent.shape[1] == self.latent_channels
         ), f"Expected latent representation to have {self.latent_channels} channels, got {z.shape[1]}"
         z = self.post_quant_conv(latent)
         return self.decoder(z)
@@ -238,3 +239,8 @@ class Decoder(nn.Module):
         for module in self.out:
             x = module(x)
         return x
+
+
+@dataclass
+class AutoEncoderKLOutput:
+    latent_dist: "GaussianDistribution"
