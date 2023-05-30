@@ -25,13 +25,16 @@ from PIL import Image
 
 @dataclass
 class DatasetConfig(BaseDataclass):
-    dataset: str = field(
-        default="poloclub/diffusiondb",
-        metadata={"help": "name of the dataset to use."},
-    )
-    subset: str = field(
-        default="2m_first_10k",
+    # dataset: str = field(
+    #     default="poloclub/diffusiondb",
+    #     metadata={"help": "name of the dataset to use."},
+    # )
+    subset: Optional[str] = field(
+        default=None,  # "2m_first_10k",
         metadata={"help": "subset of the dataset to use."},
+    )
+    dataset: str = field(
+        default="lambdalabs/pokemon-blip-captions",
     )
     data_dir: str = field(
         default="data/dataset",
@@ -229,3 +232,12 @@ def get_dataset(
         )
 
     return dataset.with_transform(preprocess_train)
+
+
+def sample_test_image(args, split, tokenizer, logger, num: int = 10):
+    test_data = get_dataset(args, split=split, tokenizer=tokenizer, logger=logger)
+    images = []
+    for _ in range(num):
+        idx = np.random.randint(0, len(test_data))
+        images.append(test_data[idx]["pixel_values"])
+    return images

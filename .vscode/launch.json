@@ -82,15 +82,17 @@
                 // //* logging
                 // "--with-tracking",
                 // "--report-to", "wandb",
+                "--log-image",
                 // //* data
                 // "--dataset", "poloclub/diffusiondb",
-                "--subset", "2m_first_10k",
+                // "--subset", "2m_first_10k",
+                // "--subset", "2m_first_10k",
                 // "--data-dir", "data/dataset",
                 // "--resolution", "64", 
                 // "--random-flip",
-                // "--max-train-samples", "9000",
-                // "--max-val-samples", "500",
-                // "--max-test-samples", "500",
+                "--max-train-samples", "700",
+                "--max-val-samples", "50",
+                "--max-test-samples", "50",
                 // // "--dataloader-num-workers", "4",
                 // //* checkpointing
                 // "--model-dir", "data/pretrained",
@@ -106,9 +108,9 @@
                 // "--autoencoder-num-res-blocks", "2",
                 // //* training
                 // "--seed", "42",
-                "--train-batch-size", "1",
+                "--train-batch-size", "8",
                 // "--eval-batch-size", "8",
-                "--max-train-steps", "200",
+                "--max-train-steps", "2000",
                 // "--guidance-scale", "7.5",
                 // // "--max-train-epochs", "10",
                 // "--log-interval", "100",

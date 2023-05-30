@@ -10,6 +10,7 @@
 
 import math
 import os
+import shutil
 import time
 
 from accelerate import Accelerator
@@ -33,6 +34,7 @@ from utils.prepare_dataset import (
     detransform,
     get_dataset,
     get_transform,
+    sample_test_image,
     to_img,
 )
 import numpy as np
@@ -65,6 +67,7 @@ class AutoencoderKLTrainer:
         cfg,
         train_dataset,
         eval_dataset,
+        test_images,
         collate_fn,
     ):
         # check params
@@ -78,6 +81,7 @@ class AutoencoderKLTrainer:
         self.cfg = cfg
         self.train_dataset: Dataset = train_dataset
         self.eval_dataset: Dataset = eval_dataset
+        self.test_images = test_images
         # * 1. init accelerator
         accelerator_log_kwcfg = {}
         if cfg.log.with_tracking:
@@ -126,7 +130,8 @@ class AutoencoderKLTrainer:
 
                 wandb_kwargs = {
                     "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}",
-                    "notes": "train unet only",
+                    "notes": "train autoencoder",
+                    "group": "train autoencoder",
                     "tags": ["stable diffusion", "pytorch"],
                     "entity": "liwenbo2099",
                     "resume": cfg.log.resume,
@@ -264,14 +269,14 @@ class AutoencoderKLTrainer:
         ckpt_path = None
         if ckpt_cfg.resume_from_checkpoint:
             ckpt_path = os.path.basename(ckpt_cfg.resume_from_checkpoint)
-        elif ckpt_cfg.resume_from_checkpoint == "latest":
-            # None, Get the most recent checkpoint or start from scratch
-            dirs = os.listdir(ckpt_cfg.output_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(
-                dirs, key=lambda x: int(x.split("-")[1])
-            )  # checkpoint-100 => 100
-            ckpt_path = dirs[-1] if len(dirs) > 0 else None
+            if ckpt_cfg.resume_from_checkpoint == "latest":
+                # None, Get the most recent checkpoint or start from scratch
+                dirs = os.listdir(ckpt_cfg.ckpt_dir)
+                dirs = [d for d in dirs if d.startswith("checkpoint")]
+                dirs = sorted(
+                    dirs, key=lambda x: int(x.split("-")[1])
+                )  # checkpoint-100 => 100
+                ckpt_path = dirs[-1] if len(dirs) > 0 else None
         if ckpt_path is None:
             self.accelerator.print(
                 f"Checkpoint '{ckpt_cfg.resume_from_checkpoint}' does not exist. Starting a new training run."
@@ -279,7 +284,7 @@ class AutoencoderKLTrainer:
             ckpt_cfg.resume_from_checkpoint = None
         else:
             self.accelerator.print(f"Resuming from checkpoint {ckpt_path}")
-            self.accelerator.load_state(os.path.join(ckpt_cfg.output_dir, ckpt_path))
+            self.accelerator.load_state(os.path.join(ckpt_cfg.ckpt_dir, ckpt_path))
         self.ckpt_path = ckpt_path
 
     def __resume_train_state(self, train_cfg, ckpt_path):
@@ -393,13 +398,16 @@ class AutoencoderKLTrainer:
                         and self.global_step % self.checkpointing_steps == 0
                     ):
                         save_path = os.path.join(
-                            cfg.checkpoint.output_dir, f"checkpoint-{self.global_step}"
+                            cfg.checkpoint.ckpt_dir, f"checkpoint-{self.global_step}"
                         )
-                        if self.cfg.checkpoint.keep_last_only:
-                            os.removedirs(self.cfg.checkpoint.output_dir)
-                            os.makedirs(self.cfg.checkpoint.output_dir)
-                        self.accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                        if (
+                            self.cfg.checkpoint.keep_last_only
+                            and self.accelerator.is_main_process
+                        ):
+                            shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
+                            os.makedirs(self.cfg.checkpoint.ckpt_dir)
+                            self.accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
 
                 logs = {
                     "loss": loss.detach().item(),
@@ -445,31 +453,21 @@ class AutoencoderKLTrainer:
                         )
                     # log image
                     if cfg.log.log_image:
-                        img = Image.open(cfg.log.test_image)
-                        recon = self.recon(img)
-                        if cfg.log.with_tracking:
-                            import wandb
-
-                            self.accelerator.log(
-                                {
-                                    "original_img": wandb.Image(img),
-                                    "recon_img": wandb.Image(recon),
-                                },
-                                step=self.global_step,
-                            )
-                            logger.info("log img to wandb")
-
+                        self.log_image()
                     self.model.train()  # back to train mode
             # save ckpt for each epoch
             if self.checkpointing_steps == "epoch":
-                output_dir = f"epoch_{epoch}"
-                if cfg.checkpoint.output_dir is not None:
-                    output_dir = os.path.join(cfg.output_dir, output_dir, "autoencoder")
-                if self.cfg.checkpoint.keep_last_only:
-                    os.removedirs(self.cfg.checkpoint.output_dir)
-                    os.makedirs(self.cfg.checkpoint.output_dir)
-                logger.info(f"Saved state to {output_dir}")
-                self.accelerator.save_state(output_dir)
+                ckpt_dir = f"epoch_{epoch}"
+                if cfg.checkpoint.ckpt_dir is not None:
+                    ckpt_dir = os.path.join(cfg.ckpt_dir, ckpt_dir, "autoencoder")
+                if (
+                    self.cfg.checkpoint.keep_last_only
+                    and self.accelerator.is_main_process
+                ):
+                    shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
+                    os.makedirs(self.cfg.checkpoint.ckpt_dir)
+                    self.accelerator.save_state(ckpt_dir)
+                    logger.info(f"Saved state to {ckpt_dir}")
 
         # end training
         self.accelerator.wait_for_everyone()
@@ -498,8 +496,6 @@ class AutoencoderKLTrainer:
         return recon_loss + self.cfg.model.autoencoder.kl_weight * kl_loss
 
     def recon(self, image):
-        transform = get_transform(resolution=64, center_crop=False, random_flip=False)
-        image = transform(image)
         image = image.unsqueeze(0).to(
             self.accelerator.device, dtype=self.weight_dtype
         )  # [1, ...]
@@ -507,6 +503,19 @@ class AutoencoderKLTrainer:
         recon_latent = self.model.decode(latent_vector)
         recon_digit = detransform(recon_latent)
         return to_img(recon_digit, output_path="output", name="autoencoder")
+
+    def log_image(self):
+        recons = [self.recon(img) for img in self.test_images]
+        if self.cfg.log.with_tracking:
+            import wandb
+
+            self.accelerator.log(
+                {
+                    "original_imgs": [wandb.Image(img) for img in self.test_images],
+                    "recon_imgs": [wandb.Image(recon) for recon in recons],
+                },
+                step=self.global_step,
+            )
 
 
 @record
@@ -531,12 +540,20 @@ def main():
         tokenizer=tokenizer,
         logger=logger,
     )
+    test_images = sample_test_image(
+        cfg.dataset,
+        split="test",
+        tokenizer=tokenizer,
+        logger=logger,
+        num=10,
+    )
     trainer = AutoencoderKLTrainer(
         model,
         args,
         cfg,
         train_dataset,
         eval_dataset,
+        test_images=test_images,
         collate_fn=collate_fn,
     )
     trainer.train()
@@ -547,4 +564,4 @@ if __name__ == "__main__":
 
 
 # to run without debug:
-# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_autoencoder.py --use-deepspeed
+# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_autoencoder.py --use-deepspeed --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --learning-rate 1e-3

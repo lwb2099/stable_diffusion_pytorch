@@ -10,6 +10,7 @@
 
 import math
 import os
+import shutil
 import time
 
 from accelerate import Accelerator
@@ -122,10 +123,10 @@ class StableDiffusionTrainer:
                 wandb_kwargs = {
                     "name": f"run_{time.strftime('%Y-%m-%d_%H:%M:%S', time.localtime())}",
                     "notes": "train unet only",
+                    "group": "train unet",
                     "tags": ["stable diffusion", "pytorch"],
                     "entity": "liwenbo2099",
                     "resume": cfg.log.resume,
-                    # "id": ,
                     "save_code": True,
                     "allow_val_change": True,
                 }
@@ -393,6 +394,9 @@ class StableDiffusionTrainer:
                             cfg.checkpoint.ckpt_dir,
                             f"checkpoint-{self.global_step}",
                         )
+                        if self.cfg.checkpoint.keep_last_only:
+                            shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
+                            os.makedirs(self.cfg.checkpoint.ckpt_dir)
                         self.accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
@@ -456,6 +460,9 @@ class StableDiffusionTrainer:
                 ckpt_dir = f"epoch_{epoch}"
                 if cfg.checkpoint.ckpt_dir is not None:
                     ckpt_dir = os.path.join(cfg.checkpoint.ckpt_dir, ckpt_dir)
+                if self.cfg.checkpoint.keep_last_only:
+                    shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
+                    os.makedirs(self.cfg.checkpoint.ckpt_dir)
                 logger.info(f"Saved state to {ckpt_dir}")
                 self.accelerator.save_state(ckpt_dir)
 
@@ -468,6 +475,9 @@ class StableDiffusionTrainer:
             ckpt_dir = os.path.join(
                 self.cfg.checkpoint.ckpt_dir, f"checkpoint-{self.global_step}"
             )
+            if self.cfg.checkpoint.keep_last_only:
+                shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
+                os.makedirs(self.cfg.checkpoint.ckpt_dir)
             self.accelerator.save_state()
 
     def __one_step(self, batch: dict):
