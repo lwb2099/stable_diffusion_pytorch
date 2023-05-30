@@ -263,7 +263,7 @@ class StableDiffusionTrainer:
             ckpt_path = os.path.basename(ckpt_cfg.resume_from_checkpoint)
         elif ckpt_cfg.resume_from_checkpoint == "latest":
             # None, Get the most recent checkpoint or start from scratch
-            dirs = os.listdir(ckpt_cfg.output_dir)
+            dirs = os.listdir(ckpt_cfg.ckpt_dir)
             dirs = [d for d in dirs if d.startswith("checkpoint")]
             dirs = sorted(
                 dirs, key=lambda x: int(x.split("-")[1])
@@ -276,7 +276,7 @@ class StableDiffusionTrainer:
             ckpt_cfg.resume_from_checkpoint = None
         else:
             self.accelerator.print(f"Resuming from checkpoint {ckpt_path}")
-            self.accelerator.load_state(os.path.join(ckpt_cfg.output_dir, ckpt_path))
+            self.accelerator.load_state(os.path.join(ckpt_cfg.ckpt_dir, ckpt_path))
         self.ckpt_path = ckpt_path
 
     def __resume_train_state(self, train_cfg, ckpt_path):
@@ -390,7 +390,7 @@ class StableDiffusionTrainer:
                         and self.global_step % self.checkpointing_steps == 0
                     ):
                         save_path = os.path.join(
-                            cfg.checkpoint.output_dir,
+                            cfg.checkpoint.ckpt_dir,
                             f"checkpoint-{self.global_step}",
                         )
                         self.accelerator.save_state(save_path)
@@ -438,14 +438,26 @@ class StableDiffusionTrainer:
                             },
                             step=self.global_step,
                         )
+                    # log image
+                    if self.cfg.log.log_image:
+                        sample = self.sample(prompt="a cat sat on the mat")
+                        if self.cfg.log.with_tracking:
+                            self.accelerator.log(
+                                {
+                                    "prompt": "a cat sat on the mat",
+                                    "recon_img": sample,
+                                },
+                                step=self.global_step,
+                            )
+
                     self.model.train()  # back to train mode
             # save ckpt for each epoch
             if self.checkpointing_steps == "epoch":
-                output_dir = f"epoch_{epoch}"
-                if cfg.checkpoint.output_dir is not None:
-                    output_dir = os.path.join(cfg.checkpoint.output_dir, output_dir)
-                logger.info(f"Saved state to {output_dir}")
-                self.accelerator.save_state(output_dir)
+                ckpt_dir = f"epoch_{epoch}"
+                if cfg.checkpoint.ckpt_dir is not None:
+                    ckpt_dir = os.path.join(cfg.checkpoint.ckpt_dir, ckpt_dir)
+                logger.info(f"Saved state to {ckpt_dir}")
+                self.accelerator.save_state(ckpt_dir)
 
         # end training
         self.accelerator.wait_for_everyone()
@@ -453,8 +465,8 @@ class StableDiffusionTrainer:
             self.accelerator.end_training()
 
         if self.accelerator.is_main_process:
-            output_dir = os.path.join(
-                self.cfg.checkpoint.output_dir, f"checkpoint-{self.global_step}"
+            ckpt_dir = os.path.join(
+                self.cfg.checkpoint.ckpt_dir, f"checkpoint-{self.global_step}"
             )
             self.accelerator.save_state()
 
@@ -533,7 +545,7 @@ class StableDiffusionTrainer:
         )
         sample = self.model.autoencoder.decode(x_0)
         sample = detransform(sample)
-        to_img(sample, output_path=save_dir, name="unet_sample")
+        return to_img(sample, output_path=save_dir, name="unet_sample")
 
 
 @record

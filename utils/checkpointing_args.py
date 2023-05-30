@@ -19,7 +19,7 @@ class CheckpointConfig(BaseDataclass):
         default=True,
         metadata={"help": "whether only keep the last ckpt"},
     )
-    output_dir: str = field(
+    ckpt_dir: str = field(
         default="model",
         metadata={"help": "dir to save and load checkpoints"},
     )

@@ -26,6 +26,13 @@ class LogConfig(BaseDataclass):
     resume: bool = field(
         default=False, metadata={"help": "whether resume from latest run"}
     )
+    log_image: bool = field(
+        default=False, metadata={"help": "whether test image gen at each evaluation"}
+    )
+    test_image: str = field(
+        default="data/test_images/test01.png",
+        metadata={"help": "test image path for log_image"},
+    )
 
 
 @dataclass

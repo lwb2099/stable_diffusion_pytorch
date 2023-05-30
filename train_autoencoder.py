@@ -412,7 +412,7 @@ class AutoencoderKLTrainer:
                 if (
                     self.global_step > 0
                     and cfg.train.log_interval > 0
-                    and self.global_step % cfg.train.log_interval == 0
+                    and (self.global_step + 1) % cfg.train.log_interval == 0
                 ):
                     logger.info(
                         f"Evaluate on eval dataset [len: {len(self.eval_dataset)}]"
@@ -443,6 +443,22 @@ class AutoencoderKLTrainer:
                             },
                             step=self.global_step,
                         )
+                    # log image
+                    if cfg.log.log_image:
+                        img = Image.open(cfg.log.test_image)
+                        recon = self.recon(img)
+                        if cfg.log.with_tracking:
+                            import wandb
+
+                            self.accelerator.log(
+                                {
+                                    "original_img": wandb.Image(img),
+                                    "recon_img": wandb.Image(recon),
+                                },
+                                step=self.global_step,
+                            )
+                            logger.info("log img to wandb")
+
                     self.model.train()  # back to train mode
             # save ckpt for each epoch
             if self.checkpointing_steps == "epoch":
@@ -478,7 +494,7 @@ class AutoencoderKLTrainer:
         latent_vector = dist.sample()
         recon_image = self.model.decode(latent_vector)
         recon_loss = F.mse_loss(img.float(), recon_image.float(), reduction="mean")
-        kl_loss = dist.kl()
+        kl_loss = dist.kl()[0]
         return recon_loss + self.cfg.model.autoencoder.kl_weight * kl_loss
 
     def recon(self, image):
@@ -490,7 +506,7 @@ class AutoencoderKLTrainer:
         latent_vector = self.model.encode(image).latent_dist.sample()
         recon_latent = self.model.decode(latent_vector)
         recon_digit = detransform(recon_latent)
-        to_img(recon_digit, output_path="output", name="autoencoder")
+        return to_img(recon_digit, output_path="output", name="autoencoder")
 
 
 @record
@@ -524,9 +540,6 @@ def main():
         collate_fn=collate_fn,
     )
     trainer.train()
-    # load img
-    img = Image.open("test/test01.png")
-    trainer.recon(img)
 
 
 if __name__ == "__main__":
