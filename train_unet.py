@@ -533,11 +533,7 @@ class StableDiffusionTrainer:
         )
         sample = self.model.autoencoder.decode(x_0)
         sample = detransform(sample)
-        to_img(sample, output_path=save_dir)
-        if self.cfg.log.with_tracking:
-            import wandb
-
-            self.accelerator.log({"sample": wandb.Image(sample), "prompt": prompt})
+        to_img(sample, output_path=save_dir, name="unet_sample")
 
 
 @record

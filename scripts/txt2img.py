@@ -45,7 +45,7 @@ def sample(
     )
     sample = model.autoencoder.decode(x_0)
     sample = detransform(sample)
-    to_img(sample, output_path=save_dir)
+    to_img(sample, output_path=save_dir, name="txt2img")
 
 
 if __name__ == "__main__":
