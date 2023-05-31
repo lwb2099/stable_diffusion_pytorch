@@ -64,7 +64,7 @@
                 // "--adam-weight-decay", "0.1",
                 // "--lr-warmup-steps", "500",
                 // // ditributed
-                // "--use-deepspeed",
+                "--use-deepspeed",
                 // // "--use-8bit-adam",             
             ]
         },
@@ -97,7 +97,8 @@
                 // //* checkpointing
                 // "--model-dir", "data/pretrained",
                 // "--output-dir", "model",
-                // "--checkpointing-steps", "100", // save every 100 steps
+                "--resume-from-checkpoint", "latest",
+                "--checkpointing-steps", "10", // save every 100 steps
                 // //* model
                 // // autoencoder
                 // "--in-channels","3",
@@ -108,17 +109,17 @@
                 // "--autoencoder-num-res-blocks", "2",
                 // //* training
                 // "--seed", "42",
-                "--train-batch-size", "8",
+                // "--train-batch-size", "8",
                 // "--eval-batch-size", "8",
-                "--max-train-steps", "2000",
+                "--max-train-steps", "10000",
                 // "--guidance-scale", "7.5",
                 // // "--max-train-epochs", "10",
                 // "--log-interval", "100",
-                // "--learning-rate", "0.0001",
+                "--learning-rate", "0.001",
                 // "--adam-weight-decay", "0.1",
                 // "--lr-warmup-steps", "500",
                 // // ditributed
-                // "--use-deepspeed",
+                "--use-deepspeed",
                 // // "--use-8bit-adam",             
             ]
         },

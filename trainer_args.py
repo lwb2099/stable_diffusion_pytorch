@@ -17,7 +17,7 @@ from stable_diffusion.dataclass import BaseDataclass
 class LogConfig(BaseDataclass):
     logging_dir: str = field(default="logs", metadata={"help": "log directory"})
     with_tracking: bool = field(
-        default=True, metadata={"help": "whether enable tracker"}
+        default=False, metadata={"help": "whether enable tracker"}
     )
     report_to: str = field(
         default="wandb",

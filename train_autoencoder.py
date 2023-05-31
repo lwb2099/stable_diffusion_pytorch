@@ -82,6 +82,7 @@ class AutoencoderKLTrainer:
         self.train_dataset: Dataset = train_dataset
         self.eval_dataset: Dataset = eval_dataset
         self.test_images = test_images
+        self.last_ckpt = None
         # * 1. init accelerator
         accelerator_log_kwcfg = {}
         if cfg.log.with_tracking:
@@ -397,17 +398,23 @@ class AutoencoderKLTrainer:
                         isinstance(self.checkpointing_steps, int)
                         and self.global_step % self.checkpointing_steps == 0
                     ):
-                        save_path = os.path.join(
+                        ckpt_path = os.path.join(
                             cfg.checkpoint.ckpt_dir, f"checkpoint-{self.global_step}"
                         )
                         if (
                             self.cfg.checkpoint.keep_last_only
                             and self.accelerator.is_main_process
                         ):
-                            shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
-                            os.makedirs(self.cfg.checkpoint.ckpt_dir)
-                            self.accelerator.save_state(save_path)
-                            logger.info(f"Saved state to {save_path}")
+                            # del last save path
+                            if self.last_ckpt is not None:
+                                shutil.rmtree(self.last_ckpt)
+                            self.last_ckpt = ckpt_path
+                            logger.info(f"self.savepath={ckpt_path}")
+                        # wait main process handle dir del and create
+                        self.accelerator.wait_for_everyone()
+                        # @note: when using deepspeed, we can't use is_main_process, or it will get stucked
+                        self.accelerator.save_state(ckpt_path)
+                        logger.info(f"Saved state to {ckpt_path}")
 
                 logs = {
                     "loss": loss.detach().item(),
@@ -457,17 +464,20 @@ class AutoencoderKLTrainer:
                     self.model.train()  # back to train mode
             # save ckpt for each epoch
             if self.checkpointing_steps == "epoch":
-                ckpt_dir = f"epoch_{epoch}"
+                ckpt_path = f"epoch_{epoch}"
                 if cfg.checkpoint.ckpt_dir is not None:
-                    ckpt_dir = os.path.join(cfg.ckpt_dir, ckpt_dir, "autoencoder")
+                    ckpt_path = os.path.join(cfg.ckpt_dir, ckpt_path, "autoencoder")
                 if (
                     self.cfg.checkpoint.keep_last_only
                     and self.accelerator.is_main_process
                 ):
-                    shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
-                    os.makedirs(self.cfg.checkpoint.ckpt_dir)
-                    self.accelerator.save_state(ckpt_dir)
-                    logger.info(f"Saved state to {ckpt_dir}")
+                    # del last save path
+                    if self.last_ckpt is not None:
+                        shutil.rmtree(self.ckpt_path)
+                    self.last_ckpt = ckpt_path
+                # @note: when using deepspeed, we can't use is_main_process, or it will get stucked
+                self.accelerator.save_state(ckpt_path)
+                logger.info(f"Saved state to {ckpt_path}")
 
         # end training
         self.accelerator.wait_for_everyone()
@@ -492,7 +502,8 @@ class AutoencoderKLTrainer:
         latent_vector = dist.sample()
         recon_image = self.model.decode(latent_vector)
         recon_loss = F.mse_loss(img.float(), recon_image.float(), reduction="mean")
-        kl_loss = dist.kl()[0]
+        kl_loss = dist.kl()[0].to(dtype=torch.float32)  # recon loss is float32
+        # @ recon loss is float32, pass float16 loss will raise bias correction error in deepspeed cpu adam
         return recon_loss + self.cfg.model.autoencoder.kl_weight * kl_loss
 
     def recon(self, image):
@@ -564,4 +575,4 @@ if __name__ == "__main__":
 
 
 # to run without debug:
-# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_autoencoder.py --use-deepspeed --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --learning-rate 1e-3
+# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_autoencoder.py --use-deepspeed --with-tracking --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --learning-rate 1e-3

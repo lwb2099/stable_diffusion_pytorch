@@ -101,7 +101,7 @@ class LatentDiffusion(nn.Module):
 
         # Sampling loop
         if time_steps is not None:
-            noise_time_steps = range(time_steps, 0, -1)
+            noise_time_steps = range(time_steps - 1, -1, -1)
         else:
             noise_time_steps = self.noise_scheduler.noise_time_steps
         progress_bar = tqdm(reversed(noise_time_steps), desc="Sampling")

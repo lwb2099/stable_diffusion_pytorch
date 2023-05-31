@@ -186,7 +186,7 @@ def get_dataset(
                 f"max_train_samples({args.max_train_samples}) is larger than the number of train samples({len(dataset)})"
             )
     if args.max_val_samples is not None and split == "validation":
-        if args.max_val_samples < len(dataset):
+        if args.max_train_samples + args.max_val_samples < len(dataset):
             dataset = dataset.select(
                 range(
                     args.max_train_samples,
@@ -198,7 +198,9 @@ def get_dataset(
                 f"max_val_samples({args.max_val_samples}) is larger than the number of val samples({len(dataset)})"
             )
     if args.max_test_samples is not None and split == "test":
-        if args.max_test_samples < len(dataset):
+        if args.max_train_samples + args.max_val_samples + args.max_test_samples < len(
+            dataset
+        ):
             dataset = dataset.select(
                 range(
                     args.max_train_samples + args.max_val_samples,
