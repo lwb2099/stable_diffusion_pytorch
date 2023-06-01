@@ -12,7 +12,7 @@ to build env for your run, just simply create a conda env with python>3.7 recomm
 
 after which you can simply run by passing 
     
-    accelerate launch --config_file place_for_your_yaml_file train.py --train_args
+    accelerate launch --config_file place_for_your_yaml_file train_unet.py --train_args
 
 I pushed my vscode `launch.json` so that you can modify command line arguments more easily.
 
@@ -23,7 +23,8 @@ The structure of the code has drew insight from a few awesome repositories: [fai
     |--dataset
     |--pretrained
     |-model
-    |--checkpoint-{step/epoch}
+    |--unet
+    |--autoencoder
     |-scripts
     |-stable_diffusion
     |--config
@@ -35,7 +36,7 @@ The structure of the code has drew insight from a few awesome repositories: [fai
 
 `model` is used to store training ckpts with name "checkpoint-{step}" if passed "--checkpointing-steps step" or "epoch-{epoch}" if passed "--checkpointing-steps epoch". 
 
-`scripts` places code like txt2img.py to sample iamge, which still remains to be finished
+`scripts` places code like txt2img.py to sample image given a prompt
 
 `test` contains scripts to test code, currently only args because packages structure and import still confuses me
 
@@ -46,9 +47,11 @@ The structure of the code has drew insight from a few awesome repositories: [fai
 ## Problems remaining
 Though it can possibly run successfully, several problems yet still remains to be solved.(or just things I have not figured out), and any guidance is appreciated
 
-- I have searched the web yet python package dependencies and import rules, I think its a better way to learn in practice. 
+- python package dependencies and import rules are still confusing, I think its a better way to learn in practice. 
 - Structure of this repo combines transformers and fairseq together, but I'm seeking a better structure for smaller projects.
-- Though I'v used dataclass, it is clearly a better way to build a model through config json file, and I'm 
+- Though I'v used dataclass, it is clearly a better way to build a model through config json file
+- Autoencoder training does not quite work, uses diffusers pretrained autoencoder instead
+
 
 ## Reference:
 Thanks to the following amazing repositories that helped me build this code:
