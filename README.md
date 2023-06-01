@@ -18,20 +18,21 @@ I pushed my vscode `launch.json` so that you can modify command line arguments m
 
 ## Structure
 The structure of the code has drew insight from a few awesome repositories: [fairseq](https://github.com/facebookresearch/fairseq), [transformers](https://github.com/huggingface/transformers) and it should looks like this:
-
-    |-data
-    |--dataset
-    |--pretrained
-    |-model
-    |--unet
-    |--autoencoder
-    |-scripts
-    |-stable_diffusion
-    |--config
-    |--models
-    |--modules
-    |-test
-    |-utils
+```bash
+    |- data
+    |- dataset
+    |-- pretrained
+    |- model
+    |-- unet
+    |-- autoencoder
+    |- scripts
+    |- stable_diffusion
+    |-- config
+    |-- models
+    |-- modules
+    |- test
+    |- utils
+```
 `data` stores downloaded dataset in `data/dataset` and pretrained CLIP model from [huggingface/models](https://huggingface.co/models) in `data/pretrained`. 
 
 `model` is used to store training ckpts with name "checkpoint-{step}" if passed "--checkpointing-steps step" or "epoch-{epoch}" if passed "--checkpointing-steps epoch". 
