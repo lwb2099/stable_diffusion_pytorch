@@ -1,7 +1,7 @@
 # Stable Diffusion
 Implementation of stable diffusion in pytorch
 
-This repo implements the text-to-image model stable diffusion in pytorch. The code uses pretrained CLIPTextModel and CLIPToeknizer from huggingface with the rest models trained from scratch on [pokemon-blip-captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset.
+This repo implements the text-to-image model stable diffusion in pytorch. The code uses pretrained CLIPTextModel and CLIPToeknizer from huggingface with the rest models trained from scratch on [poloclub/diffusiondb/2m_first_10k](https://huggingface.co/datasets/poloclub/diffusiondb) dataset.
 
 ## Prepare and running
 
