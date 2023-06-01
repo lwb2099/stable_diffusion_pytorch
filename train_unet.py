@@ -596,4 +596,4 @@ if __name__ == "__main__":
 
 
 # to run without debug:
-# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_unet.py --use-deepspeed --with-tracking --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --ckpt-dir model/unet --learning-rate 5e-7
+# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_unet.py --use-deepspeed --with-tracking --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --ckpt-dir model/unet --learning-rate 5e-7 --keep-last-only
