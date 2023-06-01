@@ -25,17 +25,17 @@ from PIL import Image
 
 @dataclass
 class DatasetConfig(BaseDataclass):
-    # dataset: str = field(
-    #     default="poloclub/diffusiondb",
-    #     metadata={"help": "name of the dataset to use."},
-    # )
+    dataset: str = field(
+        default="poloclub/diffusiondb",
+        metadata={"help": "name of the dataset to use."},
+    )
     subset: Optional[str] = field(
         default=None,  # "2m_first_10k",
         metadata={"help": "subset of the dataset to use."},
     )
-    dataset: str = field(
-        default="lambdalabs/pokemon-blip-captions",
-    )
+    # dataset: str = field(
+    #     default="lambdalabs/pokemon-blip-captions",
+    # )
     data_dir: str = field(
         default="data/dataset",
         metadata={"help": "Cache directory to store loaded dataset."},

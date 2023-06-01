@@ -54,7 +54,7 @@ class DDPMScheduler:
         super().__init__()
         self.noise_steps: int = cfg.noise_steps
         self.noise_time_steps: torch.Tensor[List[int]] = torch.arange(
-            self.noise_steps, 0, -1
+            self.noise_steps - 1, -1, -1
         )
         self.betas = self.prepare_linear_noise_schedule(cfg.beta_start, cfg.beta_end)
         self.alpha = 1.0 - self.betas

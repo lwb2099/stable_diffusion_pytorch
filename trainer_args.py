@@ -69,7 +69,7 @@ class TrainConfig(BaseDataclass):
 @dataclass
 class OptimConfig(BaseDataclass):
     learning_rate: float = field(
-        default=1e-3, metadata={"help": "learning rate argument"}
+        default=4e-5, metadata={"help": "learning rate argument"}
     )
     adam_weight_decay: float = field(
         default=0.1, metadata={"help": "Adam weight decay argument"}

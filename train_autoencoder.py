@@ -473,7 +473,7 @@ class AutoencoderKLTrainer:
                 ):
                     # del last save path
                     if self.last_ckpt is not None:
-                        shutil.rmtree(self.ckpt_path)
+                        shutil.rmtree(self.last_ckpt)
                     self.last_ckpt = ckpt_path
                 # @note: when using deepspeed, we can't use is_main_process, or it will get stucked
                 self.accelerator.save_state(ckpt_path)
@@ -575,4 +575,4 @@ if __name__ == "__main__":
 
 
 # to run without debug:
-# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_autoencoder.py --use-deepspeed --with-tracking --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --learning-rate 1e-3
+# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_autoencoder.py --use-deepspeed --with-tracking --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --ckpt-dir model/autoencoder --learning-rate 1e-4

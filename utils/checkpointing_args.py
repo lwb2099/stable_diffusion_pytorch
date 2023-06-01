@@ -16,7 +16,7 @@ from stable_diffusion.dataclass import BaseDataclass
 @dataclass
 class CheckpointConfig(BaseDataclass):
     keep_last_only: bool = field(
-        default=True,
+        default=False,
         metadata={"help": "whether only keep the last ckpt"},
     )
     ckpt_dir: str = field(

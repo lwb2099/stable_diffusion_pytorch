@@ -74,6 +74,7 @@ class StableDiffusionTrainer:
         self.cfg = cfg
         self.train_dataset: Dataset = train_dataset
         self.eval_dataset: Dataset = eval_dataset
+        self.last_ckpt = None
         # * 1. init accelerator
         accelerator_log_kwcfg = {}
         if cfg.log.with_tracking:
@@ -262,14 +263,14 @@ class StableDiffusionTrainer:
         ckpt_path = None
         if ckpt_cfg.resume_from_checkpoint:
             ckpt_path = os.path.basename(ckpt_cfg.resume_from_checkpoint)
-        elif ckpt_cfg.resume_from_checkpoint == "latest":
-            # None, Get the most recent checkpoint or start from scratch
-            dirs = os.listdir(ckpt_cfg.ckpt_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(
-                dirs, key=lambda x: int(x.split("-")[1])
-            )  # checkpoint-100 => 100
-            ckpt_path = dirs[-1] if len(dirs) > 0 else None
+            if ckpt_cfg.resume_from_checkpoint == "latest":
+                # None, Get the most recent checkpoint or start from scratch
+                dirs = os.listdir(ckpt_cfg.ckpt_dir)
+                dirs = [d for d in dirs if d.startswith("checkpoint")]
+                dirs = sorted(
+                    dirs, key=lambda x: int(x.split("-")[1])
+                )  # checkpoint-100 => 100
+                ckpt_path = dirs[-1] if len(dirs) > 0 else None
         if ckpt_path is None:
             self.accelerator.print(
                 f"Checkpoint '{ckpt_cfg.resume_from_checkpoint}' does not exist. Starting a new training run."
@@ -390,15 +391,20 @@ class StableDiffusionTrainer:
                         isinstance(self.checkpointing_steps, int)
                         and self.global_step % self.checkpointing_steps == 0
                     ):
-                        save_path = os.path.join(
+                        ckpt_path = os.path.join(
                             cfg.checkpoint.ckpt_dir,
                             f"checkpoint-{self.global_step}",
                         )
-                        if self.cfg.checkpoint.keep_last_only:
-                            shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
-                            os.makedirs(self.cfg.checkpoint.ckpt_dir)
-                        self.accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+                        if (
+                            self.cfg.checkpoint.keep_last_only
+                            and self.accelerator.is_main_process
+                        ):
+                            # del last save path
+                            if self.last_ckpt is not None:
+                                shutil.rmtree(self.last_ckpt)
+                            self.last_ckpt = ckpt_path
+                        self.accelerator.save_state(ckpt_path)
+                        logger.info(f"Saved state to {ckpt_path}")
 
                 logs = {
                     "loss": loss.detach().item(),
@@ -444,12 +450,16 @@ class StableDiffusionTrainer:
                         )
                     # log image
                     if self.cfg.log.log_image:
-                        sample = self.sample(prompt="a cat sat on the mat")
+                        prompt = "a white cat wearing a hat"
+                        sample = self.sample(prompt=prompt)
                         if self.cfg.log.with_tracking:
+                            import wandb
+
                             self.accelerator.log(
                                 {
-                                    "prompt": "a cat sat on the mat",
-                                    "recon_img": sample,
+                                    "sampled image": wandb.Image(
+                                        sample, caption=prompt
+                                    ),
                                 },
                                 step=self.global_step,
                             )
@@ -460,25 +470,21 @@ class StableDiffusionTrainer:
                 ckpt_dir = f"epoch_{epoch}"
                 if cfg.checkpoint.ckpt_dir is not None:
                     ckpt_dir = os.path.join(cfg.checkpoint.ckpt_dir, ckpt_dir)
-                if self.cfg.checkpoint.keep_last_only:
-                    shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
-                    os.makedirs(self.cfg.checkpoint.ckpt_dir)
-                logger.info(f"Saved state to {ckpt_dir}")
-                self.accelerator.save_state(ckpt_dir)
+                if (
+                    self.cfg.checkpoint.keep_last_only
+                    and self.accelerator.is_main_process
+                ):
+                    # del last save path
+                    if self.last_ckpt is not None:
+                        shutil.rmtree(self.last_ckpt)
+                    self.last_ckpt = ckpt_path
+                self.accelerator.save_state(ckpt_path)
+                logger.info(f"Saved state to {ckpt_path}")
 
         # end training
         self.accelerator.wait_for_everyone()
         if self.cfg.log.with_tracking:
             self.accelerator.end_training()
-
-        if self.accelerator.is_main_process:
-            ckpt_dir = os.path.join(
-                self.cfg.checkpoint.ckpt_dir, f"checkpoint-{self.global_step}"
-            )
-            if self.cfg.checkpoint.keep_last_only:
-                shutil.rmtree(self.cfg.checkpoint.ckpt_dir)
-                os.makedirs(self.cfg.checkpoint.ckpt_dir)
-            self.accelerator.save_state()
 
     def __one_step(self, batch: dict):
         """
@@ -554,7 +560,7 @@ class StableDiffusionTrainer:
             scale_factor=scale_factor,
         )
         sample = self.model.autoencoder.decode(x_0)
-        sample = detransform(sample)
+        sample = detransform(sample.sample)
         return to_img(sample, output_path=save_dir, name="unet_sample")
 
 
@@ -583,7 +589,6 @@ def main():
         collate_fn=collate_fn,
     )
     trainer.train()
-    trainer.sample(prompt="a cat sat on the mat")
 
 
 if __name__ == "__main__":
@@ -591,4 +596,4 @@ if __name__ == "__main__":
 
 
 # to run without debug:
-# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_unet.py --use-deepspeed
+# accelerate launch --config_file stable_diffusion/config/accelerate_config/deepspeed.yaml --main_process_port 29511 train_unet.py --use-deepspeed --with-tracking --log-image --max-train-steps 10000 --max-train-samples 700 --max-val-samples 50 --max-test-samples 50 --resume-from-checkpoint latest --ckpt-dir model/unet --learning-rate 5e-7

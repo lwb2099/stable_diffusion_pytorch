@@ -18,9 +18,10 @@
                 // //* logging
                 // "--with-tracking",
                 // "--report-to", "wandb",
+                "--log-image",
                 // //* data
                 // "--dataset", "poloclub/diffusiondb",
-                "--subset", "2m_first_10k",
+                // "--subset", "2m_first_10k",
                 // "--data-dir", "data/dataset",
                 // "--resolution", "64", 
                 // "--random-flip",
@@ -29,15 +30,14 @@
                 // "--max-test-samples", "500",
                 // // "--dataloader-num-workers", "4",
                 // //* checkpointing
-                // "--model-dir", "data/pretrained",
-                // "--output-dir", "model",
-                // "--checkpointing-steps", "100", // save every 100 steps
+                "--ckpt-dir", "model/unet",
+                "--checkpointing-steps", "10", // save every 100 steps
                 // //* model
                 // // unet:
                 // "--num-res-blocks", "2",
                 // "--n-heads", "8",
                 // "--attention-resolutions", "0,1",
-                "--channels-list", "160,320",  // "160,320,640,640",
+                // "--channels-list", "160,320",  // "160,320,640,640",
                 // "--time-emb-dim", "512",
                 // "--dropout", "0.1",
                 // "--n-layers", "2",
@@ -56,7 +56,7 @@
                 // "--seed", "42",
                 "--train-batch-size", "1",
                 // "--eval-batch-size", "8",
-                "--max-train-steps", "20",
+                "--max-train-steps", "200",
                 // "--guidance-scale", "7.5",
                 // // "--max-train-epochs", "10",
                 // "--log-interval", "100",
@@ -86,7 +86,6 @@
                 // //* data
                 // "--dataset", "poloclub/diffusiondb",
                 // "--subset", "2m_first_10k",
-                // "--subset", "2m_first_10k",
                 // "--data-dir", "data/dataset",
                 // "--resolution", "64", 
                 // "--random-flip",
@@ -95,8 +94,7 @@
                 "--max-test-samples", "50",
                 // // "--dataloader-num-workers", "4",
                 // //* checkpointing
-                // "--model-dir", "data/pretrained",
-                // "--output-dir", "model",
+                // "--ckpt-dir", "model",
                 "--resume-from-checkpoint", "latest",
                 "--checkpointing-steps", "10", // save every 100 steps
                 // //* model
